@@ -32,7 +32,6 @@ void rasterize(
         }
     }
 
-    vec3 *world_pos = (vec3 *)calloc(3, sizeof(vec3));
     vec3 *cam_pos = (vec3 *)calloc(3, sizeof(vec3)); // 3 vertices of this triangle
     vec3 *NDC_pos = (vec3 *)calloc(3, sizeof(vec3));
     vec3 *colors = (vec3 *)calloc(3, sizeof(vec3)); // colors of 3 vertices
@@ -46,9 +45,9 @@ void rasterize(
         for (int a = 0; a < 3; a++)
         {
             int tri_i = triangle_indices[a];
-            world_pos[a] = transformPoint(M, mesh->vertex_positions[tri_i]);
-            cam_pos[a] = transformPoint(V, world_pos[a]);
+            cam_pos[a] = transformPoint(V*M, mesh->vertex_positions[tri_i]);
             NDC_pos[a] = transformPoint(P, cam_pos[a]);
+
             if (mesh->vertex_colors == NULL) {
                 // normal in model-space 
                 //vec3 normal_model = transformVector(inverse(M), mesh->vertex_normals[tri_i]);
@@ -57,6 +56,7 @@ void rasterize(
             } else {
                 colors[a] = mesh->vertex_colors[tri_i];
             }
+
         }
         // S matrix of this triangle (2-simplex)
         mat3 simplex = M3(NDC_pos[0].x, NDC_pos[1].x, NDC_pos[2].x,
@@ -89,21 +89,14 @@ void rasterize(
                         {
                             texture_set_pixel(depth_buffer, i, j, depth);
                             vec3 color = w_NDC.x * colors[0] + w_NDC.y * colors[1] + w_NDC.z * colors[2];
+
                             if (invert_color) {
                                 color = V3(1,1,1) - color;
                             } else if (gray_scale) {
-                                // real C_max = MAX(MAX(color[0], color[1]), color[2]);
-                                // real C_min = MIN(MIN(color[0], color[1]), color[2]);
-                                // real delta = C_max - C_min;
-                                // real H;
-                                // real S;
-                                // real V;
-                                // if (C_max = color[0]) {
-                                //     H = 
-                                // }
                                 real gray = (color[0] + color[1] + color[2])/3;
                                 color = V3(gray, gray, gray);
                             }
+
                             texture_set_pixel(color_buffer, i, j, color, 1);
                         }
                     }
@@ -111,7 +104,7 @@ void rasterize(
             }
         }
     }
-    free(world_pos);
+
     free(cam_pos);
     free(NDC_pos);
     free(colors);
