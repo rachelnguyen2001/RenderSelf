@@ -18,130 +18,110 @@ void rasterize(
         bool invert_color, 
         bool gray_scale) {
 
-    int side_length_in_pixels = color_buffer->width;
-    real *pixel_map = (real *)calloc(side_length_in_pixels, sizeof(real));
-  
+   int side_length_in_pixels = color_buffer->width;
+
     /* clear color buffers */
     for (int i = 0; i < side_length_in_pixels; i++) {
-        pixel_map[i] = LINEAR_REMAP(i, 0, side_length_in_pixels, -1, 1);
-        for (int j = 0 ; j < side_length_in_pixels; j++)
-        {
+
+        for (int j = 0 ; j < side_length_in_pixels; j++) {
             texture_set_pixel(color_buffer, i, j, monokai.white, 0.5);
             texture_set_pixel(depth_buffer, i, j, monokai.red, 1);
         }
+
     }
 
+    vec3 *NDC_pos = (vec3 *)calloc(3, sizeof(vec3));
+    vec3 *colors = (vec3 *)calloc(3, sizeof(vec3)); // colors of 3 vertices
+    mat4 C_matrix = V*M;
     int num_triangles = mesh->num_triangles;
-
-    real *cam_pos_z = (real *)calloc(num_triangles*3, sizeof(real));
-    mat3 *simplex = (mat3 *)calloc(num_triangles, sizeof(mat3));
-    vec4 *range = (vec4 *)calloc(num_triangles, sizeof(vec4));
-    vec3 *colors = (vec3 *)calloc(num_triangles*3, sizeof(vec3));
-
-    mat4 get_cam_pos = V*M;
-    vec3 cam_point_0;
-    vec3 cam_point_1;
-    vec3 cam_point_2;
-    vec3 NDC_point_0;
-    vec3 NDC_point_1;
-    vec3 NDC_point_2;
+    vec3 cam_z;
+    vec3 cam_pos;
 
     for (int t = 0; t < num_triangles; t++) {
         // transform triangle vertices from model to world to camera and NDC
         // and get colors of 3 vertices
         int3 triangle_indices = mesh->triangle_indices[t];
 
-        cam_point_0 = transformPoint(get_cam_pos, mesh->vertex_positions[triangle_indices[0]]);
-        NDC_point_0 = transformPoint(P, cam_point_0);
-        cam_pos_z[3*t] = cam_point_0.z;
+        for (int a = 0; a < 3; a++)
+        {
+            int tri_i = triangle_indices[a];
+            cam_pos = transformPoint(C_matrix, mesh->vertex_positions[tri_i]);
+            NDC_pos[a] = transformPoint(P, cam_pos);
+            cam_z[a] = cam_pos.z;
 
-        cam_point_1 = transformPoint(get_cam_pos, mesh->vertex_positions[triangle_indices[1]]);
-        NDC_point_1 = transformPoint(P, cam_point_1);
-        cam_pos_z[3*t+1] = cam_point_1.z;
+            if (mesh->vertex_colors == NULL) {
+                // normal in model-space 
+                //vec3 normal_model = transformVector(inverse(M), mesh->vertex_normals[tri_i]);
+                colors[a] = V3(0.5, 0.5, 0.5) + 0.5 * mesh->vertex_normals[tri_i];
+                //colors[a] = transformPoint(M, V3(0.5, 0.5, 0.5) + 0.5 * normal_model);
+            } else {
+                colors[a] = mesh->vertex_colors[tri_i];
+            }
 
-        cam_point_2 = transformPoint(get_cam_pos, mesh->vertex_positions[triangle_indices[2]]);
-        NDC_point_2 = transformPoint(P, cam_point_2);
-        cam_pos_z[3*t+2] = cam_point_2.z;
-
-        real min_x = MIN(MIN(NDC_point_0.x, NDC_point_1.x), NDC_point_2.x);
-        real max_x = MAX(MAX(NDC_point_0.x, NDC_point_1.x), NDC_point_2.x);
-        real min_y = MIN(MIN(NDC_point_0.y, NDC_point_1.y), NDC_point_2.y);
-        real max_y = MAX(MAX(NDC_point_0.y, NDC_point_1.y), NDC_point_2.y);
-
-        range[t] = V4(min_x, max_x, min_y, max_y);
-        mat3 S = M3(NDC_point_0.x, NDC_point_1.x, NDC_point_2.x, 
-                            NDC_point_0.y, NDC_point_1.y, NDC_point_2.y,
-                            1, 1, 1);
-        simplex[t] = inverse(S);
-    }
-
-    if (mesh->vertex_colors) {
-        for (int t = 0; t < num_triangles; ++t) {
-            int3 triangle_indices = mesh->triangle_indices[t];
-            colors[3*t] = mesh->vertex_colors[triangle_indices[0]];
-            colors[3*t + 1] = mesh->vertex_colors[triangle_indices[1]];
-            colors[3*t + 2] = mesh->vertex_colors[triangle_indices[2]];
         }
-    } else {
-        for (int t = 0; t < num_triangles; ++t) {
-            int3 triangle_indices = mesh->triangle_indices[t];
-            colors[3*t] = V3(0.5, 0.5, 0.5) + 0.5 * mesh->vertex_normals[triangle_indices[0]];
-            colors[3*t + 1] = V3(0.5, 0.5, 0.5) + 0.5 * mesh->vertex_normals[triangle_indices[1]];
-            colors[3*t + 2] = V3(0.5, 0.5, 0.5) + 0.5 * mesh->vertex_normals[triangle_indices[2]];
-        }
+        // S matrix of this triangle (2-simplex)
+        mat3 simplex = inverse(M3(NDC_pos[0].x, NDC_pos[1].x, NDC_pos[2].x,
+                          NDC_pos[0].y, NDC_pos[1].y, NDC_pos[2].y,
+                          1, 1, 1));
 
-    }
+        real min_y = MIN(MIN(NDC_pos[0].y, NDC_pos[1].y), NDC_pos[2].y);
+        real max_y = MAX(MAX(NDC_pos[0].y, NDC_pos[1].y), NDC_pos[2].y);
 
+        real min_x = MIN(MIN(NDC_pos[0].x, NDC_pos[1].x), NDC_pos[2].x);
+        real max_x = MAX(MAX(NDC_pos[0].x, NDC_pos[1].x), NDC_pos[2].x);
 
-    for (int i = 0; i < side_length_in_pixels; ++i) {
-        real p_r_NDC = pixel_map[i];   
+        for (int i = 0; i < side_length_in_pixels; i++)
+        {   
+            real p_r_NDC = LINEAR_REMAP(i, 0, side_length_in_pixels, -1, 1);
 
-        for (int j = 0; j < side_length_in_pixels; ++j) {
-            real p_c_NDC = pixel_map[j];
-            vec3 pixel = V3(p_c_NDC, p_r_NDC, 1); // pixel in NDC
-            real z_val = z_far;
-            vec3 color = V3(1.0, 1.0, 1.0);
-            
-            for (int t = 0; t < num_triangles; ++t) {
-                vec4 r = range[t];
+            if (IS_BETWEEN(p_r_NDC, min_y, max_y)) {
+                for (int j = 0; j < side_length_in_pixels; j++)
+                {
+                /* check if pixel is inside projection of triangle */
 
-                if (IS_BETWEEN(p_r_NDC, r.z, r.w) && IS_BETWEEN(p_c_NDC, r.x, r.y)) {
-                    vec3 w_NDC = simplex[t] * pixel;
+                // transform pixel to NDC
+                    real p_c_NDC = LINEAR_REMAP(j, 0, side_length_in_pixels, -1, 1);
 
-                    if (w_NDC.x > 0 && w_NDC.y > 0 && w_NDC.z > 0) {
-                        real z_cam = w_NDC.x * cam_pos_z[3*t] + w_NDC.y * cam_pos_z[3*t+1] + w_NDC.z * cam_pos_z[3*t+2];
+                    
+                    if (IS_BETWEEN(p_c_NDC, min_x, max_x)) {
+                        vec3 pixel = V3(p_c_NDC, p_r_NDC, 1); // pixel in NDC
+                        vec3 w_NDC = simplex * pixel;
 
-                        if (z_cam > z_val && z_cam <= z_near && z_cam >= z_far) {
-                            z_val = z_cam;
-                            color = w_NDC.x * colors[3*t] + w_NDC.y * colors[3*t+1] + w_NDC.z * colors[3*t+2];
+                        if (w_NDC.x > 0 && w_NDC.y > 0 && w_NDC.z > 0)
+                        {
+                            /* depth test! */   
+                            // corresponding point of this pixel on the triangle in camera-space
+                            real z_cam = w_NDC.x * cam_z[0] + w_NDC.y * cam_z[1] + w_NDC.z * cam_z[2];
+                            if (z_cam <= z_near && z_cam >= z_far) {
+                                real depth = LINEAR_REMAP(z_cam, z_near, z_far, 0, 1);
+                                real cur_depth;
+                                texture_get_pixel(depth_buffer, i, j, &cur_depth);
+                                // passed depth test
+                                if (depth < cur_depth)
+                                {
+                                    texture_set_pixel(depth_buffer, i, j, depth);
+                                    vec3 color = w_NDC.x * colors[0] + w_NDC.y * colors[1] + w_NDC.z * colors[2];
+
+                                    if (invert_color) {
+                                        color = V3(1,1,1) - color;
+                                    } else if (gray_scale) {
+                                        real gray = (color[0] + color[1] + color[2])/3;
+                                        color = V3(gray, gray, gray);
+                                    }
+
+                                    texture_set_pixel(color_buffer, i, j, color, 1);
+                                }
+                            }
                         }
                     }
-                } 
-            }
-
-
-            if (z_val > z_far) {
-                real depth = LINEAR_REMAP(z_val, z_near, z_far, 0, 1);
-                texture_set_pixel(depth_buffer, i, j, depth);
-                
-                if (invert_color) {
-                    color = V3(1.0, 1.0, 1.0) - color;
-                } else if (gray_scale) {
-                    real gray = (color.x + color.y + color.z)/3;
-                    color = V3(gray, gray, gray);
+                    
                 }
-
-                texture_set_pixel(color_buffer, i, j, color, 1.0);
-            }
-
+            }           
+           
         }
-
     }
 
-    free(pixel_map);
-    free(cam_pos_z);
-    free(range);
-    free(simplex);
+    free(NDC_pos);
     free(colors);
 }
 
