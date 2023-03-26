@@ -18,47 +18,50 @@ void rasterize(
         bool invert_color, 
         bool gray_scale) {
 
-   int side_length_in_pixels = color_buffer->width;
+    int side_length_in_pixels = color_buffer->width;
+    real *D = (real *)calloc(side_length_in_pixels * side_length_in_pixels, sizeof(real));
+    vec3 *p_colors = (vec3 *)calloc(side_length_in_pixels * side_length_in_pixels, sizeof(vec3));
 
     /* clear color buffers */
     for (int i = 0; i < side_length_in_pixels; i++) {
+        int r = i*side_length_in_pixels;
 
         for (int j = 0 ; j < side_length_in_pixels; j++) {
             texture_set_pixel(color_buffer, i, j, monokai.white, 0.5);
             texture_set_pixel(depth_buffer, i, j, monokai.red, 1);
+            D[r+ j] = z_far;
         }
 
     }
 
-    vec3 *NDC_pos = (vec3 *)calloc(3, sizeof(vec3));
-    vec3 *colors = (vec3 *)calloc(3, sizeof(vec3)); // colors of 3 vertices
+    vec3 NDC_pos[3] = {};
+    vec3 colors[3] = {};
     mat4 C_matrix = V*M;
     int num_triangles = mesh->num_triangles;
     vec3 cam_z;
     vec3 cam_pos;
+    bool draw_bunny = (mesh->vertex_colors == NULL);
 
     for (int t = 0; t < num_triangles; t++) {
         // transform triangle vertices from model to world to camera and NDC
         // and get colors of 3 vertices
         int3 triangle_indices = mesh->triangle_indices[t];
 
-        for (int a = 0; a < 3; a++)
-        {
+        for (int a = 0; a < 3; a++) {
             int tri_i = triangle_indices[a];
             cam_pos = transformPoint(C_matrix, mesh->vertex_positions[tri_i]);
             NDC_pos[a] = transformPoint(P, cam_pos);
             cam_z[a] = cam_pos.z;
 
-            if (mesh->vertex_colors == NULL) {
+            if (draw_bunny) {
                 // normal in model-space 
-                //vec3 normal_model = transformVector(inverse(M), mesh->vertex_normals[tri_i]);
                 colors[a] = V3(0.5, 0.5, 0.5) + 0.5 * mesh->vertex_normals[tri_i];
-                //colors[a] = transformPoint(M, V3(0.5, 0.5, 0.5) + 0.5 * normal_model);
             } else {
                 colors[a] = mesh->vertex_colors[tri_i];
             }
 
         }
+
         // S matrix of this triangle (2-simplex)
         mat3 simplex = inverse(M3(NDC_pos[0].x, NDC_pos[1].x, NDC_pos[2].x,
                           NDC_pos[0].y, NDC_pos[1].y, NDC_pos[2].y,
@@ -70,59 +73,64 @@ void rasterize(
         real min_x = MIN(MIN(NDC_pos[0].x, NDC_pos[1].x), NDC_pos[2].x);
         real max_x = MAX(MAX(NDC_pos[0].x, NDC_pos[1].x), NDC_pos[2].x);
 
-        for (int i = 0; i < side_length_in_pixels; i++)
-        {   
+        for (int i = 0; i < side_length_in_pixels; i++) {   
             real p_r_NDC = LINEAR_REMAP(i, 0, side_length_in_pixels, -1, 1);
 
-            if (IS_BETWEEN(p_r_NDC, min_y, max_y)) {
-                for (int j = 0; j < side_length_in_pixels; j++)
-                {
-                /* check if pixel is inside projection of triangle */
+            if (p_r_NDC > max_y) {
+                break;
+            }
 
-                // transform pixel to NDC
+            if (p_r_NDC >= min_y) {
+                int r = i*side_length_in_pixels;
+
+                for (int j = 0; j < side_length_in_pixels; j++) {
+                
                     real p_c_NDC = LINEAR_REMAP(j, 0, side_length_in_pixels, -1, 1);
 
-                    
-                    if (IS_BETWEEN(p_c_NDC, min_x, max_x)) {
-                        vec3 pixel = V3(p_c_NDC, p_r_NDC, 1); // pixel in NDC
-                        vec3 w_NDC = simplex * pixel;
-
-                        if (w_NDC.x > 0 && w_NDC.y > 0 && w_NDC.z > 0)
-                        {
-                            /* depth test! */   
-                            // corresponding point of this pixel on the triangle in camera-space
-                            real z_cam = w_NDC.x * cam_z[0] + w_NDC.y * cam_z[1] + w_NDC.z * cam_z[2];
-                            if (z_cam <= z_near && z_cam >= z_far) {
-                                real depth = LINEAR_REMAP(z_cam, z_near, z_far, 0, 1);
-                                real cur_depth;
-                                texture_get_pixel(depth_buffer, i, j, &cur_depth);
-                                // passed depth test
-                                if (depth < cur_depth)
-                                {
-                                    texture_set_pixel(depth_buffer, i, j, depth);
-                                    vec3 color = w_NDC.x * colors[0] + w_NDC.y * colors[1] + w_NDC.z * colors[2];
-
-                                    if (invert_color) {
-                                        color = V3(1,1,1) - color;
-                                    } else if (gray_scale) {
-                                        real gray = (color[0] + color[1] + color[2])/3;
-                                        color = V3(gray, gray, gray);
-                                    }
-
-                                    texture_set_pixel(color_buffer, i, j, color, 1);
-                                }
-                            }
-                        }
+                    if (p_c_NDC > max_x) {
+                        break;
                     }
                     
+                    if (p_c_NDC >= min_x) {
+                        vec3 w_NDC = simplex * V3(p_c_NDC, p_r_NDC, 1);
+
+                        if (w_NDC.x > 0 && w_NDC.y > 0 && w_NDC.z > 0) {
+                            real z_cam = dot(cam_z, w_NDC);
+
+                            if (z_cam <= z_near && z_cam >= z_far && z_cam > D[r+j]) {
+                                    D[r + j] = z_cam;
+                                    p_colors[r + j] = w_NDC.x * colors[0] + w_NDC.y * colors[1] + w_NDC.z * colors[2];
+                            }
+                        }      
+                    }
                 }
-            }           
-           
+            }          
         }
     }
 
-    free(NDC_pos);
-    free(colors);
+    for (int i = 0; i < side_length_in_pixels; i++) {
+        int r = i*side_length_in_pixels;
+        for (int j = 0; j < side_length_in_pixels; j++) {
+            real z_cam = D[r + j];
+            if (z_cam > z_far) {
+                real depth = LINEAR_REMAP(z_cam, z_near, z_far, 0, 1);
+                texture_set_pixel(depth_buffer, i, j, depth);
+                vec3 color = p_colors[r + j];
+                
+                if (invert_color) {
+                    color = V3(1.0, 1.0, 1.0) - color;
+                } else if (gray_scale) {
+                    real gray = (color[0] + color[1] + color[2])/3;
+                    color = V3(gray, gray, gray);
+                }
+
+                texture_set_pixel(color_buffer, i, j, color, 1);
+            }
+        }
+    }
+
+    free(D);
+    free(p_colors);
 }
 
 vec3 _example_vertex_positions[] = {
