@@ -171,7 +171,121 @@ void hw6b() {
 
 
 void hw6c() {
+    Shader shader; {
+        char *vertex_shader_source = R""(
+            #version 330 core
+            layout (location = 0) in vec3 _p_model;
+            layout (location = 1) in vec3 _n_model;
+            uniform mat4 P, V, M;
 
+            out vec3 p_world;
+            out vec3 _n_world;
+
+            void main() {
+                p_world = (M * vec4(_p_model, 1.0)).xyz;
+                _n_world = mat3(transpose(inverse(M))) * _n_model;
+                gl_Position = P * V * vec4(p_world, 1.0);
+            }
+        )"";
+
+        char *fragment_shader_source = R""(
+            #version 330 core
+
+            uniform vec3 o_camera_world; // camera position
+            uniform int  num_lights;
+            uniform vec3 light_positions_world[16];
+            uniform vec3 light_colors[16];
+            uniform float ambientStrength;
+            uniform float diffuseStrength;
+            uniform float specularStrength;
+            uniform float shininess; 
+
+            in vec3 p_world; // fragment position
+            in vec3 _n_world;
+
+            out vec4 fragColor;
+
+            void main() {
+                vec3 n_world = normalize(_n_world); // fragment normal
+
+                vec3 color = vec3(ambientStrength);
+
+                for (int i = 0; i < num_lights; ++i) {
+                    vec3 ambient = ambientStrength * light_colors[i];
+
+                    vec3 lightDir = normalize(light_positions_world[i] - p_world);
+                    float diff = max(dot(n_world, lightDir), 0.0);
+                    vec3 diffuse = diffuseStrength * diff * light_colors[i];
+
+                    vec3 viewDir = normalize(o_camera_world - p_world);
+                    vec3 reflectDir = reflect(-lightDir, n_world);
+                    float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+                    vec3 specular = specularStrength * spec * light_colors[i];
+
+                    color += (ambient + diffuse + specular);
+                }
+
+                fragColor = vec4(color, 1);
+            }
+        )"";
+
+        shader = shader_create(vertex_shader_source, 2, fragment_shader_source);
+    }
+
+    #define MAX_NUM_LIGHTS 6
+    int num_lights = 1;
+    vec3 light_positions_world[MAX_NUM_LIGHTS] = {};
+    vec3 light_colors[MAX_NUM_LIGHTS] = { monokai.red, monokai.orange, monokai.yellow, monokai.green, monokai.blue, monokai.purple };
+    {
+        int k = 0;
+        light_positions_world[k++] = {  0.0,  0.0,  3.0 };
+        light_positions_world[k++] = {  0.0,  0.0, -3.0 };
+        light_positions_world[k++] = {  0.0,  3.0,  0.0 };
+        light_positions_world[k++] = {  0.0, -3.0,  0.0 };
+        light_positions_world[k++] = {  3.0,  0.0,  0.0 };
+        light_positions_world[k++] = { -3.0,  0.0,  0.0 };
+    }
+
+    IndexedTriangleMesh3D mesh = library.meshes.bunny;
+
+    real ambientStrength = 0.1;
+    real diffuseStrength = 0.6;
+    real specularStrength = 1.0;
+    real shininess = 12.0;
+
+    Camera3D camera = { 10.0, RAD(45) };
+    while (cow_begin_frame()) {
+        camera_move(&camera);
+        mat4 P = camera_get_P(&camera);
+        mat4 V = camera_get_V(&camera);
+        mat4 M = globals.Identity;
+        mat4 PV = P * V;
+
+        gui_slider("num_lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
+        soup_draw(PV, SOUP_POINTS, num_lights, light_positions_world, light_colors);
+        _widget_translate_3D(P * V, num_lights, light_positions_world, light_colors);
+
+        gui_printf("");
+        gui_slider("ambientStrength", &ambientStrength, 0.0, 2.0);
+        gui_slider("diffuseStrength", &diffuseStrength, 0.0, 2.0);
+        gui_slider("specularStrength", &specularStrength, 0.0, 2.0);
+        gui_slider("shininess", &shininess, 0.0, 256.0);
+
+        shader_set_uniform(&shader, "P", P);
+        shader_set_uniform(&shader, "V", V);
+        shader_set_uniform(&shader, "M", M);
+        shader_set_uniform(&shader, "o_camera_world", camera_get_origin(&camera));
+        shader_set_uniform(&shader, "num_lights", num_lights);
+        shader_set_uniform(&shader, "light_positions_world", num_lights, light_positions_world);
+        shader_set_uniform(&shader, "light_colors", num_lights, light_colors);
+        shader_set_uniform(&shader, "ambientStrength", ambientStrength);
+        shader_set_uniform(&shader, "diffuseStrength", diffuseStrength);
+        shader_set_uniform(&shader, "specularStrength", specularStrength);
+        shader_set_uniform(&shader, "shininess", shininess);
+        shader_pass_vertex_attribute(&shader, mesh.num_vertices, mesh.vertex_positions);
+        shader_pass_vertex_attribute(&shader, mesh.num_vertices, mesh.vertex_normals);
+        shader_draw(&shader, mesh.num_triangles, mesh.triangle_indices);
+    }
 }
 
 
@@ -179,7 +293,7 @@ void hw6c() {
 int main() {
     APPS {
         // APP(hw6a);
-        APP(hw6b);
+        // APP(hw6b);
         APP(hw6c);
     }
     return 0;
