@@ -10,77 +10,43 @@ float TAU = 6.28318530718;
 float RAD(float deg) {
     return deg / 360.0 * TAU;
 }
+float inverse_lerp(float a, float b, float p) {
+    return (p-a)/(b-a);
+}
+float linear_remap(float p, float a, float b, float c, float d) {
+    return mix(c, d, inverse_lerp(a,b,p));
+}
+vec3 linear_remap_vec3(vec3 v, float a, float b, float c, float d) {
+    return vec3(linear_remap(v.x, a, b, c, d), 
+                linear_remap(v.y, a, b, c, d),
+                linear_remap(v.z, a, b, c, d));
 
-vec3 opRepLim(vec3 p, float s, vec3 lima, vec3 limb) {
-    return p - s*clamp(round(p/s), lima, limb);
 }
 
+// TRANSFORMATION MATRICES 
+
+mat3 rotateZ(float theta) {
+    float c = cos(theta);
+    float s = sin(theta);
+
+    return mat3(
+        vec3(c, -s, 0),
+        vec3(s, c, 0),
+        vec3(0, 0, 1)
+    );
+}
+
+// PRIMITIVES 
 
 float sdSphere(vec3 p, float s)
 {
   return length(p)-s;
 }
 
-float sdTorus(vec3 p, vec2 t) {
-    vec2 q = vec2(length(p.xz)-t.x,p.y);
-    return length(q)-t.y;
-}
-float sdBox(vec3 p, vec3 b) {
-    vec3 q = abs(p) - b;
-    return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
-}
-
-float opIntersection(float d1, float d2) {
-    return max(d1, d2);
-}
-
-vec3 opRep(vec3 p, float s)
-{
-    return mod(p+0.5*s,s)-0.5*s;
-}
-
-float opExtrusion(vec3 p, float sdf, float h)
-{
-    vec2 w = vec2(sdf, abs(p.z) - h);
-  	return min(max(w.x,w.y),0.0) + length(max(w,0.0));
-}
-
-vec2 opRevolution(vec3 p, float w)
-{
-    return vec2(length(p.xz) - w, p.y);
-}
-
 float opElongateSphere(vec3 p, vec3 h, float s)
-{
+{   
     vec3 q = p - clamp(p, -h, h);
     return sdSphere(q, s);
-}
-
-float opSmoothUnion( float d1, float d2, float k ) {
-    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
-    return mix( d2, d1, h ) - k*h*(1.0-h); 
-}
-
-float sdRotatedTorus(vec3 p, vec3 torus_position, float major_radius, float minor_radius) {
-   float angle = RAD(65);
-   mat4 R_x = mat4(
-    1, 0, 0, 0,
-    0, cos(angle), -sin(angle), 0,
-    0, sin(angle), cos(angle), 0,
-    0, 0, 0, 1
-   );
-
-   float t = sin(iTime);
-   mat4 R_y = mat4(
-    cos(t), 0, sin(t), 0,
-    0, 1, 0, 0,
-    -sin(t), 0, cos(t), 0, 
-    0, 0, 0, 1
-   );
-
-   vec3 pt = (vec4(p, 1) * inverse(R_x * R_y)).xyz;
-   vec2 torus_radii = vec2(major_radius, minor_radius);
-   return sdTorus(pt, torus_radii);
 }
 
 float sdSolidAngle(vec3 p, vec2 c, float ra)
@@ -93,6 +59,8 @@ float sdSolidAngle(vec3 p, vec2 c, float ra)
 }
 
 float rotatedSolidAngle(vec3 p, vec2 c, float ra, float angle) {
+    float t = sin(iTime);
+
     mat4 R_z = mat4(
         cos(angle), -sin(angle), 0, 0,
         sin(angle), cos(angle), 0, 0,
@@ -104,29 +72,85 @@ float rotatedSolidAngle(vec3 p, vec2 c, float ra, float angle) {
    return sdSolidAngle(pt, c, ra);
 }
 
-float opSubtraction( float d1, float d2 )
+float dot2(in vec3 v ) { return dot(v,v); }
+float sdRoundCone(vec3 p, vec3 a, vec3 b, float r1, float r2)
 {
-    return max(-d1,d2);
+    // sampling independent computations (only depend on shape)
+    vec3  ba = b - a;
+    float l2 = dot(ba,ba);
+    float rr = r1 - r2;
+    float a2 = l2 - rr*rr;
+    float il2 = 1.0/l2;
+    
+    // sampling dependant computations
+    vec3 pa = p - a;
+    float y = dot(pa,ba);
+    float z = y - l2;
+    float x2 = dot2( pa*l2 - ba*y );
+    float y2 = y*y*l2;
+    float z2 = z*z*l2;
+
+    // single square root!
+    float k = sign(rr)*rr*rr*x2;
+    if( sign(z)*a2*z2 > k ) return  sqrt(x2 + z2)        *il2 - r2;
+    if( sign(y)*a2*y2 < k ) return  sqrt(x2 + y2)        *il2 - r1;
+                            return (sqrt(x2*a2*il2)+y*rr)*il2 - r1;
+}
+
+float sdCappedCylinder( vec3 p, float h, float r )
+{
+  vec2 d = abs(vec2(length(p.xz),p.y)) - vec2(r,h);
+  return min(max(d.x,d.y),0.0) + length(max(d,0.0));
 }
 
 float sdLongCandy(vec3 p) {
+    float displacement = sin(5.0 * p.x) * sin(5.0 * p.y) * sin(5.0 * p.z) * 0.25 * sin(iTime);
+
     // Body
-    vec3 sphere_center = vec3(0.0, 0.0, 0.0);
+    vec3 sphere_center = vec3(-1.0, -0.5, 0.0);
     float body_radius = 0.25;
     float dist_to_sphere = opElongateSphere(p - sphere_center, vec3(0.5, 0.0, 0.0), body_radius);
 
     // Left side    
-    vec3 left_center = vec3(-0.5, 0.0, 0.0);
+    vec3 left_center = vec3(-1.5, -0.5, 0.0);
     vec2 c = vec2(sin(RAD(30)), cos(RAD(30)));
     float dis_to_left = rotatedSolidAngle(p - left_center, c, 0.7, RAD(90));
                 
     // Right side
-    vec3 right_center = vec3(0.5, 0.0, 0.0);
+    vec3 right_center = vec3(-0.5, -0.5, 0.0);
     float dis_to_right = rotatedSolidAngle(p - right_center, c, 0.7, RAD(-90));
 
     float f = min(dist_to_sphere, dis_to_left);
     f = min(f, dis_to_right);
-    return f;
+    return f + displacement;
+}
+
+
+vec2 sdIceCream(vec3 p) {
+    vec3 a = vec3(-4.0, -0.25, 0.0);
+    vec3 b = vec3(-4.0, 0.75, 0.0);
+
+    float angle = RAD(15);
+
+    mat4 R_z = mat4(
+        cos(angle), -sin(angle), 0, 0,
+        sin(angle), cos(angle), 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    );
+
+   /*mat4 S = mat4(
+    1, 0, 0, 0,
+    0, 0.5 + 0.25*abs(sin(iTime)), 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1
+   );*/
+
+    //vec3 pt = (S * R_z * vec4(p, 1.0)).xyz;
+    vec3 pt = (R_z * vec4(p, 1.0)).xyz;
+    float dist_to_ice_cream = sdRoundCone(pt, a, b, 0.1, 0.3);
+
+    return vec2(dist_to_ice_cream, pt.y);
 }
 
 vec4 march(vec3 o, vec3 d) {
@@ -141,82 +165,119 @@ vec4 march(vec3 o, vec3 d) {
     // f -- distance to implicit surface
     float t = 0.0;
     int step = 0;
+    int cream = 0;
+    int hit_ice_cream = 0;
+
     while ((step++ < march_max_steps) && (t < march_max_distance)) {
         vec3 p = o + t * d;
         float f = march_max_distance; {
             // TODO: make the scene of your dreams :)
-            { // box
-                //vec3 box_position = vec3(0.0, 0.0, 0.0);
-                //vec3 box_position = vec3(2.0 * sin(iTime), 0.0, 0.0);
-                //vec3 q = p*6.0 - vec3(5.0, 0.0, 0.0);
-                //vec3 r = opRepLim(q, 1.0, vec3(2.0, 2.0, 2.0), vec3(-2.0, -2.0, -2.0));
-                //vec3 box_side_lengths = vec3(1.0);
-                //float dist = sdBox(r - box_position, box_side_lengths) - 0.1;
-                //dist /= 6;
-                //float distance_to_box = sdBox(p - box_position, box_side_lengths) - 0.1;
-                //float displacement = sin(5.0 * p.x) * sin(5.0 * p.y) * sin(5.0 * p.z) * 0.25;
-                //f = min(f, dist);
-                //f = min(f, distance_to_box);
+            //  MELTING SWEETS 
+            float displacement = sin(5.0 * p.x) * sin(5.0 * p.y) * sin(5.0 * p.z) * 0.25 * sin(iTime);
+            { // long candy 
+                f = sdLongCandy(p+vec3(0.5,0.0,0.0));
+                if (f < march_hit_tolerance) {
+                    return vec4(0.5 + 0.5 * cos(TAU * (vec3(0.0, 0.33, -0.33) - vec3(0.3 * p.z))), 1.0);
+                }   
             }
-            { // torus
-                vec3 torus_position = vec3(-1.0, 0.0, 0.0);
-                float torus_major_radius = 1.0;
-                float torus_minor_radius = 0.3;
-                //vec2 torus_radii = vec2(torus_major_radius, torus_minor_radius);
-                //float distance_to_torus = sdTorus(p - torus_position, torus_radii);
-                //float dis = rotatedTorus(p);
-                //float distance_to_torus = sdRotatedTorus(p, torus_position, torus_major_radius, torus_minor_radius);
-                //f = min(f, distance_to_torus);
+            {   // ice cream 
+                vec2 dis_to_ice_cream = sdIceCream(p);
+                f = min(f, dis_to_ice_cream.x + displacement);
+                if (f < march_hit_tolerance) {
+                    if (dis_to_ice_cream.y > 0.75) {
+                        // color cream portion
+                        return vec4(1.000, 0.833, 0.224, 1.0);
+                    } else {
+                         return vec4(0.5, 0.35, 0.05, 1.0); 
+                    }
+                } 
             }
+            { // dango 
+                float dango_r = 0.2;
+                vec3 dango_bot_pos = vec3(1.0, -0.5, 0.0); 
+                vec3 dango_mid_pos = dango_bot_pos + vec3(0.0, 2*dango_r, 0.0);
+                vec3 dango_top_pos = dango_mid_pos + vec3(0.0, 2*dango_r, 0.0);
 
-            { // torus top
-                //vec3 torus_position = vec3(-1.0, 1.0, 0.0);
-                //float torus_major_radius = 1.0;
-                //float torus_minor_radius = 0.3;
-                //vec2 torus_radii = vec2(torus_major_radius, torus_minor_radius);
-                //float distance_to_torus = sdTorus(p - torus_position, torus_radii);
-                //float displacement = sin(5.0 * p.x) * sin(5.0 * p.y) * sin(5.0 * p.z) * 0.25;
-                //f = min(f, displacement + distance_to_torus);
-                //vec3 q = p + vec3(0.0, -2.0, 0.0);
-                //1f = min(f, opExtrusion(q, sdTorus(q - torus_position, torus_radii) + displacement, 0.005));
-            }
+                float angle = RAD(20);
 
-            {
-                // 
-                vec3 sphere_center = vec3(0.0, 0.0, 0.0);
-                float radius = 0.25;
-                //float dist_to_sphere = opElongateSphere(p - sphere_center, vec3(0.5, 0.0, 0.0), radius);
-                //f = min(f, dist_to_sphere);
-            }
+                mat4 R_z = mat4(
+                    cos(angle), -sin(angle), 0, 0,
+                    sin(angle), cos(angle), 0, 0,
+                    0, 0, 1, 0,
+                    0, 0, 0, 1
+                );
 
-            {
-                vec3 center = vec3(-0.5, 0.0, 0.0);
-                vec2 c = vec2(sin(RAD(30)), cos(RAD(30)));
-                //float dis = rotatedSolidAngle(p, c, 0.8);
-                //f = min(f, dis);
-            }
+                vec4 dango_bot_pos_t = R_z * vec4(dango_bot_pos, 1.0); 
+                vec4 dango_mid_pos_t = R_z * vec4(dango_mid_pos, 1.0); 
+                vec4 dango_top_pos_t = R_z * vec4(dango_top_pos, 1.0); 
 
-            {
-                vec3 center = vec3(0.5, 0.0, 0.0);
-                vec2 c = vec2(sin(RAD(30)), cos(RAD(30)));
-                //float dis = r_rotatedSolidAngle(p, c, 0.8);
-                //f = min(f, dis);
+                float dango_bot_d = sdSphere(p - dango_bot_pos_t.xyz, dango_r);
+                float dango_mid_d = sdSphere(p - dango_mid_pos_t.xyz, dango_r);
+                float dango_top_d = sdSphere(p - dango_top_pos_t.xyz, dango_r);
+                f = min(f, dango_bot_d + displacement);
+                if (f < march_hit_tolerance) {
+                    vec3 col = vec3(136,213,123);
+                    col = linear_remap_vec3(col, 0.0, 255.0, 0.0, 1.0);
+                    return vec4(col, 1.0);    
+                }
+                f = min(f, dango_mid_d  + displacement);
+                if (f < march_hit_tolerance) {
+                    vec3 col = vec3(239,239,239);
+                    col = linear_remap_vec3(col, 0.0, 255.0, 0.0, 1.0);
+                    return vec4(col, 1.0);       
+                }
+                f = min(f, dango_top_d + displacement);
+                if (f < march_hit_tolerance) {
+                    vec3 col = vec3	(234,156,214);
+                    col = linear_remap_vec3(col, 0.0, 255.0, 0.0, 1.0);
+                    return vec4(col, 1.0); 
+                }
+                vec3 dango_stick_pos = vec3(0.8, -0.7, 0.0);
+                float dango_stick_h = dango_r * 2 * 2.5;
+                float dango_stick_r = 0.02; 
+                float dango_stick_d = sdCappedCylinder(inverse(rotateZ(RAD(20))) * (p-dango_stick_pos), dango_stick_h, dango_stick_r);
+                f = min(f, dango_stick_d + displacement);
+                if (f < march_hit_tolerance) {
+                    vec3 col = vec3(196, 164, 132);
+                    col = linear_remap_vec3(col, 0.0, 255.0, 0.0, 1.0);
+                    return vec4(col, 1.0); 
+                }
             }
+            { // lollipop 
+                float lollipop_r = 0.4;
+                vec3 lollipop_pos = vec3(3.0, 0.0, 0.0); 
+                float lollipop_d = sdSphere(p - lollipop_pos, lollipop_r);
+                f = min(f, lollipop_d  + displacement);
 
-            {
-                f = sdLongCandy(p);
+                if (f < march_hit_tolerance) {
+                    return vec4(0.5 + 0.5 * cos(TAU * (vec3(0.0, 0.66, -0.66) - vec3(0.6 * p.z))), 1.0);
+                }
+
+                vec3 lol_ring_pos = lollipop_pos;
+                float lol_ring_r = lollipop_r + 0.02;
+                float lol_ring_h = 0.02;
+                //float lol_ring_d = sdRoundedCylinder(p - lol_ring_pos, lol_ring_r, lol_ring_r, lol_ring_h);
+                float lol_ring_d = sdCappedCylinder(p - lol_ring_pos, lol_ring_h, lol_ring_r);
+                f = min(f, lol_ring_d  + displacement);
+
+                if (f < march_hit_tolerance) {
+                    vec3 col = vec3	(93, 63, 211);
+                    col = linear_remap_vec3(col, 0.0, 255.0, 0.0, 1.0);
+                    return vec4(col, 1.0); 
+                }
+
+                vec3 lol_stick_pos = lollipop_pos - vec3(0.0, 0.8, 0.0);
+                float lol_stick_h = lollipop_r * 2;
+                float lol_stick_r = 0.02; 
+                float lol_stick_d = sdCappedCylinder(p-lol_stick_pos, lol_stick_h, lol_stick_r);
+                f = min(f, lol_stick_d + displacement);
+                if (f < march_hit_tolerance) {
+                    return vec4(1.0, 1.0, 1.0, 1.0); 
+                }
             }
 
         }
-        if (f < march_hit_tolerance) { // hit!
-            //if (p.y > 0.1) {
-                //return vec4(1.0, 1.0, 1.0, 1.0);
-            //}
-            //if (f < 0.0008 + 0.0001*sin(iTime)) {
-                //return vec4(1.0, 1.0, 1.0, 1.0);
-            //}
-            return vec4(0.5 + 0.5 * cos(TAU * (vec3(0.0, 0.33, -0.33) - vec3(0.3 * p.z))), 1.0);
-        }
+        
         t += min(f, .5); // make the number smaller if you're getting weird artifacts
     }
     return vec4(0.0);

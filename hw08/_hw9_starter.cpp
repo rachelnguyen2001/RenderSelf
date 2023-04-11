@@ -6,61 +6,13 @@
 // software raytracer //////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-struct CastRayHit {
-    real t;  // t at the hit point; recall ray equation is p(t) = o + (t * d)
-
-    int tri; // index of triangle that was hit; -1 if no triangles were hit
-    bool hit_any_triangles() { return (tri != -1); }
-
-    vec3 p;     // position of hitpoint
-    vec3 n;     // normal at hitpoint
-    vec3 color; // color at hitpoint
-
-    // barycentric coordinates of hit
-    real alpha;
-    real beta;
-    real gamma;
-};
-
-CastRayHit cast_ray(IndexedTriangleMesh3D *mesh, vec3 o, vec3 d) {
-    CastRayHit hit = {};
-    hit.t = INFINITY;
-    hit.tri = -1;
-
-    for (int tri = 0; tri < mesh->num_triangles; ++tri) {
-        int3 cur_tri = mesh->triangle_indices[tri];
-        vec3 a = mesh->vertex_positions[cur_tri[0]];
-        vec3 b = mesh->vertex_positions[cur_tri[1]];
-        vec3 c = mesh->vertex_positions[cur_tri[2]];
-
-        vec4 alpha_beta_gamma_t = inverse(hstack(V4(a, 1.0), V4(b, 1.0), V4(c, 1.0), V4(-d, 0.0))) * V4(o, 1.0);
-
-        if (alpha_beta_gamma_t.x > -TINY_VAL && alpha_beta_gamma_t.y > -TINY_VAL && alpha_beta_gamma_t.z > -TINY_VAL && alpha_beta_gamma_t.w > TINY_VAL)
-        {
-            if (alpha_beta_gamma_t.w < hit.t) {
-                hit.t = alpha_beta_gamma_t.w;
-                hit.tri = tri;
-                hit.alpha = alpha_beta_gamma_t.x;
-                hit.beta = alpha_beta_gamma_t.y;
-                hit.gamma = alpha_beta_gamma_t.z;
-                hit.p = hit.alpha * a + hit.beta * b + hit.gamma * c;
-                hit.n = hit.alpha * mesh->vertex_normals[cur_tri[0]] + hit.beta * mesh->vertex_normals[cur_tri[1]] + hit.gamma * mesh->vertex_normals[cur_tri[2]];
-                hit.color = hit.alpha * mesh->vertex_colors[cur_tri[0]] + hit.beta * mesh->vertex_colors[cur_tri[1]] + hit.gamma * mesh->vertex_colors[cur_tri[2]];
-            }
-        }
-    }
-
-    return hit;
-}
-
 void raytrace(
         real theta_over_two, // half camera angle of view (see slides)
         mat4 C,
         IndexedTriangleMesh3D *mesh,
         Texture *color_buffer,
         vec3 light_position,
-        mat4 PV_for_debug_drawing_rays,
-        bool draw_ray
+        mat4 PV_for_debug_drawing_rays
         ) {
 
     _SUPPRESS_COMPILER_WARNING_UNUSED_VARIABLE(PV_for_debug_drawing_rays);
@@ -73,59 +25,10 @@ void raytrace(
             texture_set_pixel(color_buffer, i, j, V3(1.0, 1.0, 1.0), 0.5);
         }
     }
-    vec3 o = { C(0,3), C(1,3), C(2,3) };
-    real tan_theta_over_two = tan(theta_over_two);
-    
-    if (draw_ray) {
 
-        eso_begin(PV_for_debug_drawing_rays, SOUP_LINES);
-        eso_color(monokai.white);
-        for (int i = 0; i < side_length_in_pixels; ++i) {
-            for (int j = 0; j < side_length_in_pixels; ++j) {
-                vec3 d_cam = V3(LINEAR_REMAP(j, 0, side_length_in_pixels, -tan_theta_over_two, tan_theta_over_two), LINEAR_REMAP(i, 0, side_length_in_pixels, -tan_theta_over_two, tan_theta_over_two), -1);
-                vec3 d = transformVector(C, d_cam);
-                eso_vertex(o);
-                eso_vertex(o + d);
-            }
-        }
-        eso_end();
+    // TODO: ray trace the mesh :D
+    // NOTE: please assume the mesh is already in world coordinates (don't worry about M)
 
-    }
-
-    real ambientStrength = 0.4;
-    real diffuseStrength = 0.6;
-    real specularStrength = 0.1;
-
-    // color pixels 
-    for (int i = 0; i < side_length_in_pixels; ++i) {
-        for (int j = 0; j < side_length_in_pixels; ++j) {
-            vec3 d_cam = V3(LINEAR_REMAP(j, 0, side_length_in_pixels, -tan_theta_over_two, tan_theta_over_two), LINEAR_REMAP(i, 0, side_length_in_pixels, -tan_theta_over_two, tan_theta_over_two), -1);
-            vec3 d = transformVector(C, d_cam);
-
-            CastRayHit hit = cast_ray(mesh, o, d);
-
-            if (hit.hit_any_triangles()) {
-
-                // cast ray 
-                CastRayHit shadow_ray = cast_ray(mesh, hit.p, light_position - hit.p);
-                vec3 ambient = ambientStrength * hit.color;
-                vec3 color = ambient;
-                if (!shadow_ray.hit_any_triangles()) {
-                    // in full light, full light model (+diffuse + specular)
-                    vec3 lightDir = normalized(light_position - hit.p);
-                    real diff = MAX(dot(normalized(hit.n), lightDir), 0.0);
-                    vec3 diffuse = diffuseStrength * diff * hit.color;
-
-                    vec3 viewDir = normalized(transformPoint(C, V3(0.0, 0.0, 0.0)) - hit.p);
-                    vec3 reflectDir = 2 * (dot(normalized(hit.n), lightDir)) * normalized(hit.n) - lightDir;
-                    real spec = pow(MAX(dot(viewDir, reflectDir), 0.0), 32);
-                    vec3 specular = specularStrength * spec * hit.color;
-                    color += (diffuse + specular);
-                } 
-                texture_set_pixel(color_buffer, i, j, color, 1.0);
-            }
-        }
-    }
 }
 
 vec3 _example_vertex_positions[] = {
@@ -247,12 +150,10 @@ void hw9a() {
     bool draw_teapot_instead = false;
     bool hide_film_plane = false;
     bool _hide_camera_cube = false;
-    bool draw_ray = false;
 
     while (cow_begin_frame()) {
         gui_checkbox("hide_film_plane", &hide_film_plane, 'a');
         gui_checkbox("draw_teapot_instead", &draw_teapot_instead, 'b');
-        gui_checkbox("draw_ray", &draw_ray, 'r');
 
         IndexedTriangleMesh3D *mesh = &mesh_example;
         if (draw_teapot_instead) {
@@ -278,7 +179,7 @@ void hw9a() {
                     mesh,
                     &color_buffer,
                     light_position,
-                    PV_observer, draw_ray);
+                    PV_observer);
             texture_sync_to_GPU(&color_buffer);
         }
 
