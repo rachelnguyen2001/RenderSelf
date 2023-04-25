@@ -42,26 +42,12 @@ vec2 step_forward_in_time(vec2 curr, int mode, real h, real g, real L) {
     vec2 next = curr;
     if (mode == PENDULUM_SIMULATION_MODE_EXPLICIT) {
         // TODO: explicit Euler
-        real d_xi_x = curr.y;
-        real d_xi_y = get_alpha(curr.x);
-        real next_xi_theta = curr.x + h*d_xi_x;
-        real next_xi_omega = curr.y + h*d_xi_y;
-        
-        next.x = next_xi_theta;
-        next.y = next_xi_omega;
+
     } else if (mode == PENDULUM_SIMULATION_MODE_SEMI_IMPLICIT) {
         // TODO: semi-implicit Euler
-        real next_omega = curr.y + h*get_alpha(curr.x);
-        next.x = curr.x + h*next_omega;
-        next.y = curr.y + h*get_alpha(curr.x);
+
     } else if (mode == PENDULUM_SIMULATION_MODE_IMPLICIT) {
         // TODO: implicit Euler
-
-        while (TRUE) {
-            vec2 tmp = curr + h*V2(next[1], get_alpha(next[0]));
-            if (IS_ZERO(squaredNorm(next - tmp))) { break; }
-            next = tmp;
-        }
 
     }
     return next;
@@ -237,22 +223,14 @@ char *skeletal_animation_mode_names[] = {
 void update_skeleton(vec2 *b, real *L, real *theta) {
     // TODO: calculate b
     // (after you get this right, you should see the skeleton)
-    b[0] = {};
-    for (int j = 0; j < NUM_BONES; ++j) {
-        b[j + 1] = b[j] + L[j] * e_theta(theta[j]);
-    }
+
 }
 
 
 void update_skin(vec2 *s, real **weights, vec2 *b, real *theta, vec2 *b_bind, vec2 *s_bind) {
     // TODO: calculate s
     // (after you get this right, you should see the skin)
-    for (int i = 0; i < NUM_NODES; ++i) {
-        s[i] = {};
-        for (int j = 0; j < NUM_BONES; ++j) {
-            s[i] += weights[i][j] * (b[j] + rotated(s_bind[i] - b_bind[j], theta[j]));
-        }
-    }
+
 }
 
 
@@ -284,42 +262,11 @@ void initialize_weights(real **weights, int mode, vec2 *s_bind, vec2 *b_bind) {
             else if (mode == SKELETON_ANIMATION_MODE_RIGID) {
                 // TODO: bind the node completely to its closest bone
                 // (after you get this right, the skin should look "like a robot" / "rigid")
-                int closest_bone = 0;
-                real min_dist = point_segment_distance(s_bind[i], b_bind[0], b_bind[1]);
 
-                for (int j = 1; j < NUM_BONES; ++j) {
-                    real cur_dist = point_segment_distance(s_bind[i], b_bind[j], b_bind[j + 1]);
-
-                    if (cur_dist < min_dist) {
-                        min_dist = cur_dist;
-                        closest_bone = j;
-                    }
-                }
-
-                w_i[closest_bone] = 1.0;
             }
             else if (mode == SKELETAL_ANIMATION_MODE_SMOOTH) {
                 // TODO (tricky): smoothly blend the weights between nearby bones
                 // (after you get this right, the skin should look "squishy" / "smooth")
-                real min_dist = INFINITY;
-                real dist[NUM_BONES];
-
-                for (int j = 0; j < NUM_BONES; ++j) {
-                    dist[j] = point_segment_distance(s_bind[i], b_bind[j], b_bind[j + 1]);
-                    min_dist = MIN(min_dist, dist[j]);
-                }
-
-                for (int j = 0; j < NUM_BONES; ++j) {
-                    // if (dist[j] - min_dist > 0.25) {
-                    //     w_i[j] = 0;
-                    // } else {
-                    //     w_i[j] = 1 / dist[j];
-                    // }
-                     w_i[j] = 1 / dist[j];
-                    w_i[j] -= 0.5;
-
-                    w_i[j] = MAX(w_i[j], 0);
-                }
 
             }
         }
