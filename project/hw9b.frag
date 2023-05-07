@@ -54,6 +54,48 @@ float sdEllipsoid(vec3 p, vec3 r) {
   return k0*(k0-1.0)/k1;
 }
 
+float sdBezier(vec2 pos, vec2 A, vec2 B, vec2 C) {    
+    vec2 a = B - A;
+    vec2 b = A - 2.0*B + C;
+    vec2 c = a * 2.0;
+    vec2 d = A - pos;
+    float kk = 1.0/dot(b,b);
+    float kx = kk * dot(a,b);
+    float ky = kk * (2.0*dot(a,a)+dot(d,b)) / 3.0;
+    float kz = kk * dot(d,a);      
+    float res = 0.0;
+    float p = ky - kx*kx;
+    float p3 = p*p*p;
+    float q = kx*(2.0*kx*kx-3.0*ky) + kz;
+    float h = q*q + 4.0*p3;
+    if( h >= 0.0) 
+    { 
+        h = sqrt(h);
+        vec2 x = (vec2(h,-h)-q)/2.0;
+        vec2 uv = sign(x)*pow(abs(x), vec2(1.0/3.0));
+        float t = clamp( uv.x+uv.y-kx, 0.0, 1.0 );
+        res = dot(d + (c + b*t)*t, d + (c + b*t)*t);
+    }
+    else
+    {
+        float z = sqrt(-p);
+        float v = acos( q/(p*z*2.0) ) / 3.0;
+        float m = cos(v);
+        float n = sin(v)*1.732050808;
+        vec3  t = clamp(vec3(m+m,-n-m,n-m)*z-kx,0.0,1.0);
+        res = min( dot(d+(c+b*t.x)*t.x, d+(c+b*t.x)*t.x),
+                   dot(d+(c+b*t.y)*t.y, d+(c+b*t.y)*t.y) );
+        // the third root cannot be the closest
+        // res = min(res,dot(d+(c+b*t.z)*t.z, d + (c + b*t)*t));
+    }
+    return sqrt( res );
+}
+
+float opRevolutionForBeizer(vec3 p, float o, vec2 A, vec2 B, vec2 C) {
+    vec2 q = vec2(length(p.xz) - o, p.y);
+    return sdBezier(q, A, B, C);
+}
+
 float sdLowerHead(vec3 p, vec3 r) {
     vec3 r1 = vec3(0.5, 0.5, 0.5);
     vec3 r2 = r1 + p.y * r;
@@ -62,11 +104,23 @@ float sdLowerHead(vec3 p, vec3 r) {
     return k0*(k0-1.0)/k1;
 }
 
-float sdEye(vec3 p) {
-    vec3 q = vec3(abs(p.x), p.y, p.z);
-    vec3 eye_c = vec3(0.25, 0.6, 0.0);
-    vec3 eye_r = vec3(0.1, 0.1, 0.4);
-    return sdEllipsoid(q - eye_c, eye_r);
+float sdEyeBall(vec3 p) {
+    vec3 q = vec3(sqrt(p.x*p.x + 0.0005), p.y, p.z);
+    vec3 eyeBall_c = vec3(0.25, 0.6, 0.0);
+    vec3 eyeBall_r = vec3(0.1, 0.1, 0.4);
+    return sdEllipsoid(q - eyeBall_c, eyeBall_r);
+}
+
+float sdRightEye(vec3 p) {
+    vec3 eye_c = vec3(0.3, 0.56, 0.0);
+    float eye_r = 0.13;
+    return sdSphere(p - eye_c, eye_r);
+}
+
+float sdLeftEye(vec3 p) {
+    vec3 eye_c = vec3(-0.3, 0.56, 0.0);
+    float eye_r = 0.13;
+    return sdSphere(p - eye_c, eye_r);
 }
 
 float sdFace(vec3 p) {
@@ -101,18 +155,33 @@ float sdShoulder(vec3 p) {
     return sdSegment(q, a, b, 0.35);
 }
 
+float sdUpperLip(vec3 p) {
+    vec3 center = vec3(0.0, 0.0, 1.0);
+    return opRevolutionForBeizer(p - center, 0.1, vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(-1.0, -1.0));
+}
+
 float sdModel(vec3 p) {
     float dis_face = sdFace(p);
     float dis_neck = sdNeck(p);
-    float dis = opSmoothUnion(dis_face, dis_neck, 0.5);
+    float dis = opSmoothUnion(dis_face, dis_neck, 0.02);
     
     float dis_shoulder = sdShoulder(p);
-    dis = opSmoothUnion(dis, dis_shoulder, 0.5);
+    dis = opSmoothUnion(dis, dis_shoulder, 0.1);
 
-    float dis_eye = sdEye(p);
-    return opSmoothSubtraction(dis_eye, dis, 0.85);
-    
-    //return dis;
+    float dis_eyeBall = sdEyeBall(p);
+    dis = opSmoothSubtraction(dis_eyeBall, dis, 0.85);
+
+    float dis_RightEye = sdRightEye(p);
+    //dis = opSmoothUnion(dis, dis_eye, 0.5);
+    dis = min(dis, dis_RightEye);
+
+    float dis_LeftEye = sdLeftEye(p);
+    dis = min(dis, dis_LeftEye);
+
+    //float dis_UpperLip = sdUpperLip(p);
+    //dis = opSmoothUnion(dis, dis_UpperLip, 0.5);
+
+    return dis;
 }
 
 float sdTorus(vec3 p, vec2 t) {
@@ -127,7 +196,7 @@ float sdBox(vec3 p, vec3 b) {
 vec4 march(vec3 o, vec3 d) {
     // params
     const int   march_max_steps     = 100;
-    const float march_hit_tolerance = 0.0001;
+    const float march_hit_tolerance = 0.001;
     const float march_max_distance  = 100.0;
     // o -- camera origin               
     // t -- distance marched along ray  
@@ -136,7 +205,7 @@ vec4 march(vec3 o, vec3 d) {
     // f -- distance to implicit surface
     float t = 0.0;
     int step = 0;
-    int hit_eye = 0;
+    int hit_lip = 0;
 
     while ((step++ < march_max_steps) && (t < march_max_distance)) {
         vec3 p = o + t * d;
@@ -154,9 +223,15 @@ vec4 march(vec3 o, vec3 d) {
                 // f = min(f, dis_shoulder);
             }
 
-            {
+            if (true) {
                 float dis_model = sdModel(p);
                 f = min(f, dis_model);
+
+                if (f < march_hit_tolerance) {
+                    vec3 skin_color = vec3(241, 194, 125);
+                    return rgb_to_frag(skin_color);
+                }
+
             }
 
             {
@@ -167,20 +242,27 @@ vec4 march(vec3 o, vec3 d) {
                 //} else {
                     //hit_eye = 0;
                 //}
+                float dis_lip = sdUpperLip(p);
+                f = min(f, dis_lip);
+
+                if (f < march_hit_tolerance) {
+                    vec3 lip_color = vec3(255, 0, 0);
+                    return rgb_to_frag(lip_color);
+                }
+
             }
         }
-        if (f < march_hit_tolerance) { // hit!
+        //if (f < march_hit_tolerance) { // hit!
             // return vec4(0.5 + 0.5 * cos(TAU * (vec3(0.0, 0.33, -0.33) - vec3(0.3 * p.z))), 1.0);
-            vec3 skin_color = vec3(241, 194, 125);
-            vec3 eye_color = vec3(255, 255, 255);
+            //vec3 eye_color = vec3(255, 255, 255);
 
-            if (hit_eye == 1) {
-                return rgb_to_frag(eye_color); 
-            }
+            //if (hit_lip == 1) {
+                //return rgb_to_frag(eye_color); 
+            //}
 
-            return rgb_to_frag(skin_color);
-        }
-        t += clamp(f, 0.005, 0.1); // make the number smaller if you're getting weird artifacts
+            //return rgb_to_frag(skin_color);
+        //}
+        t += f; //clamp(f, 0.005, 0.1); // make the number smaller if you're getting weird artifacts
     }
     return vec4(0.0);
 }
