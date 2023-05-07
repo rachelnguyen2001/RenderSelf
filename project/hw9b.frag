@@ -156,8 +156,8 @@ float sdShoulder(vec3 p) {
 }
 
 float sdUpperLip(vec3 p) {
-    vec3 center = vec3(0.0, 0.0, 1.0);
-    return opRevolutionForBeizer(p - center, 0.1, vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(-1.0, -1.0));
+    vec3 center = vec3(0.01, -0.4, 0.5);
+    return opRevolutionForBeizer(p - center, 0.12, vec2(0.0, 0.0), vec2(0.5, 0.25), vec2(-0.5, 0.25));
 }
 
 float sdModel(vec3 p) {
