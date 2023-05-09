@@ -16,7 +16,7 @@ void platform() {
     Shader shader = shader_create(vertex_shader_source, 1, fragment_shader_source);
 
     #define MAX_NUM_LIGHTS 6
-    int num_lights = 1;
+    int num_lights = 6;
     vec3 light_positions_world[MAX_NUM_LIGHTS] = {};
     //vec3 light_colors[MAX_NUM_LIGHTS] = { monokai.red, monokai.orange, monokai.yellow, monokai.green, monokai.blue, monokai.purple };
     vec3 sun_color = V3(244, 233, 155);

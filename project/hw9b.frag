@@ -67,13 +67,32 @@ float sat(float x) {
     return min(1.0, max(x, 0.0));   
 }
 
+vec3 get_X_plus(vec3 p) {
+    return vec3(p.x + EPSILON, p.y, p.z);
+}
+
+vec3 get_X_minus(vec3 p) {
+    return vec3(p.x - EPSILON, p.y, p.z);
+}
+
+vec3 get_Y_plus(vec3 p) {
+    return vec3(p.x, p.y + EPSILON, p.z);
+}
+
+vec3 get_Y_minus(vec3 p) {
+    return vec3(p.x, p.y - EPSILON, p.z);
+}
+
+vec3 get_Z_plus(vec3 p) {
+    return vec3(p.x, p.y, p.z + EPSILON);
+}
+
+vec3 get_Z_minus(vec3 p) {
+    return vec3(p.x, p.y, p.z - EPSILON);
+}
+
 float sdSphere(vec3 p, float s) {
-    float d = length(p) - s;
-    //float x_prime = length(vec3(p.x + EPSILON, p.y, p.z)) - length(vec3(p.x - EPSILON, p.y, p.z));
-    //float y_prime = length(vec3(p.x, p.y + EPSILON, p.z)) - length(vec3(p.x, p.y - EPSILON, p.z));
-    //float z_prime = length(vec3(p.x, p.y, p.z + EPSILON)) - length(vec3(p.x, p.y, p.z - EPSILON));
-    //return vec4(d, x_prime, y_prime, z_prime);
-    return d;
+    return length(p) - s;
 }
 
 float sdSegment(vec3 p, vec3 a, vec3 b, float r) {
@@ -83,7 +102,6 @@ float sdSegment(vec3 p, vec3 a, vec3 b, float r) {
 }
 
 float opSmoothSubtraction(float d1, float d2, float k) {
-    //eturn min(d2, -d1);
     float h = clamp(0.5 - 0.5*(d2+d1)/k, 0.0, 1.0);
     return mix(d2, -d1, h) + k*h*(1.0-h); 
 }
@@ -141,6 +159,18 @@ float sdBezier(vec2 pos, vec2 A, vec2 B, vec2 C) {
     return sqrt( res );
 }
 
+float sdCone(vec3 p, vec2 c, float h) {
+  vec2 q = h*vec2(c.x/c.y,-1.0);
+    
+  vec2 w = vec2( length(p.xz), p.y );
+  vec2 a = w - q*clamp( dot(w,q)/dot(q,q), 0.0, 1.0 );
+  vec2 b = w - q*vec2( clamp( w.x/q.x, 0.0, 1.0 ), 1.0 );
+  float k = sign( q.y );
+  float d = min(dot( a, a ),dot(b, b));
+  float s = max( k*(w.x*q.y-w.y*q.x),k*(w.y-q.y)  );
+  return sqrt(d)*sign(s);
+}
+
 float opRevolutionForBeizer(vec3 p, float o, vec2 A, vec2 B, vec2 C) {
     vec2 q = vec2(length(p.xz) - o, p.y);
     return sdBezier(q, A, B, C);
@@ -151,8 +181,52 @@ vec4 smin(vec4 a, vec4 b, float k) {
     float h = max(k-abs(a.x-b.x),0.0);
     float m = 0.25*h*h/k;
     float n = 0.50*  h/k;
-    return vec4(min(a.x,  b.x) - m, mix(a.yzw,b.yzw,(a.x<b.x)?n:1.0-n));
+    return vec4(min(a.x,  b.x) - m, mix(a.yzw, b.yzw,(a.x<b.x)?n:1.0-n));
 }
+
+// From https://www.shadertoy.com/view/NsffWj
+vec3 inflate(vec3 p, float r) {
+    float pl = length(p);
+    vec3 n = p / pl;
+    return p - n * clamp(pl, -r, r);
+}
+
+float sdNoseWingLeft(vec3 p) {
+    vec3 c = vec3(-0.1, -0.1, 0.6);
+    return sdSphere(p - c, 0.03);
+}
+
+float sdNoseWingRight(vec3 p) {
+    vec3 c = vec3(0.1, -0.1, 0.6);
+    return sdSphere(p - c, 0.03);
+}
+
+float sdNoseHoleLeft(vec3 p) {
+    vec3 c = vec3(-0.05, -0.1, 0.65);
+    return sdSphere(p - c, 0.007);
+}
+
+float sdNoseHoleRight(vec3 p) {
+    vec3 c = vec3(0.05, -0.1, 0.65);
+    return sdSphere(p - c, 0.007);
+}
+
+float sdNose(vec3 p) {
+    vec3 c = vec3(0.0,0.1,0.2);
+    float angle = RAD(20);
+    vec3 q = inflate(p, 0.8);
+    float d = sdCone(q - c, vec2(sin(angle), cos(angle)), 0.1);
+    float d_wing_left = sdNoseWingLeft(p);
+    d = opSmoothUnion(d, d_wing_left, 0.5);
+    float d_wing_right = sdNoseWingRight(p);
+    d = opSmoothUnion(d, d_wing_right, 0.5);
+    float d_hole_left = sdNoseHoleLeft(p);
+    d = opSmoothSubtraction(d_hole_left, d, 0.5);
+    float d_hole_right = sdNoseHoleRight(p);
+    d = opSmoothSubtraction(d_hole_right, d, 0.5);
+    return d;
+}
+
 
 float sdLowerHead(vec3 p, vec3 r) {
     vec3 r1 = vec3(0.5, 0.5, 0.5);
@@ -164,26 +238,26 @@ float sdLowerHead(vec3 p, vec3 r) {
 
 float sdEyeBall(vec3 p) {
     vec3 q = vec3(sqrt(p.x*p.x + 0.0005), p.y, p.z);
-    vec3 eyeBall_c = vec3(0.35, 0.6, 0.7);
-    vec3 eyeBall_r = vec3(0.1, 0.1, 0.4);
+    vec3 eyeBall_c = vec3(0.35, 0.6, 0.5);
+    vec3 eyeBall_r = vec3(0.1, 0.05, 0.3);
     return sdEllipsoid(q - eyeBall_c, eyeBall_r);
 }
 
 float sdEyeBallSpace(vec3 p) {
     vec3 q = vec3(sqrt(p.x*p.x + 0.0005), p.y, p.z);
     vec3 eyeBall_c = vec3(0.35, 0.6, 0.6);
-    vec3 eyeBall_r = vec3(0.08, 0.1, 0.3);
+    vec3 eyeBall_r = vec3(0.04, 0.05, 0.2);
     return sdEllipsoid(q - eyeBall_c, eyeBall_r);
 }
 
 float sdRightEye(vec3 p) {
-    vec3 eye_c = vec3(0.35, 0.6, 0.8);
+    vec3 eye_c = vec3(0.35, 0.55, 0.7);
     float eye_r = 0.15;
     return sdSphere(p - eye_c, eye_r);
 }
 
 float sdLeftEye(vec3 p) {
-    vec3 eye_c = vec3(-0.35, 0.6, 0.8);
+    vec3 eye_c = vec3(-0.35, 0.55, 0.7);
     float eye_r = 0.15;
     return sdSphere(p - eye_c, eye_r);
 }
@@ -192,20 +266,12 @@ float sdFace(vec3 p) {
     vec3 top_head_c = vec3(0.0, 0.75, 0.0);
     float top_head_r = 0.8;
     float d_top_head = sdSphere(p - top_head_c, top_head_r);
-    //float x_top_head = sdSphere(vec3(p.x + EPSILON, p.y, p.z) - top_head_c, top_head_r) - sdSphere(vec3(p.x - EPSILON, p.y, p.z) - top_head_c, top_head_r);
-    //float y_top_head = sdSphere(vec3(p.x, p.y + EPSILON, p.z) - top_head_c, top_head_r) - sdSphere(vec3(p.x, p.y - EPSILON, p.z) - top_head_c, top_head_r);
-    //float z_top_head = sdSphere(vec3(p.x, p.y, p.z + EPSILON) - top_head_c, top_head_r) - sdSphere(vec3(p.x, p.y, p.z - EPSILON) - top_head_c, top_head_r);
-    //vec4 a = vec4(d_top_head, x_top_head, y_top_head, z_top_head);
 
     vec3 low_head_c = vec3(0.0, -0.5, 0.0);
     vec3 low_head_r = vec3(1.0, 0.75, 1.05);
     float d_low_head = sdLowerHead(p - low_head_c, low_head_r);
-    //float x_low_head = sdLowerHead(vec3(p.x, p.y, p.z) - low_head_c, low_head_r) - sdLowerHead(vec3(p.x - EPSILON, p.y, p.z) - low_head_c, low_head_r);
-    //float y_low_head = sdLowerHead(vec3(p.x + EPSILON, p.y, p.z) - low_head_c, low_head_r) - sdLowerHead(vec3(p.x - EPSILON, p.y, p.z) - low_head_c, low_head_r);
-    //float z_low_head = sdLowerHead(vec3(p.x + EPSILON, p.y, p.z) - low_head_c, low_head_r) - sdLowerHead(vec3(p.x - EPSILON, p.y, p.z) - low_head_c, low_head_r);
 
-    float dis_face = opSmoothUnion(d_top_head, d_low_head, 0.25);
-    return dis_face;
+    return opSmoothUnion(d_top_head, d_low_head, 0.25);
 }
 
 float sdNeck(vec3 p) {
@@ -227,31 +293,29 @@ float sdUpperLip(vec3 p) {
 }
 
 float sdModel(vec3 p) {
-    float dis_face = sdFace(p);
-    float dis_neck = sdNeck(p);
-    float dis = opSmoothUnion(dis_face, dis_neck, 0.02);
+    float d_face = sdFace(p);
+    float d_neck = sdNeck(p);
+    float d = opSmoothUnion(d_face, d_neck, 0.02);
     
-    float dis_shoulder = sdShoulder(p);
-    dis = opSmoothUnion(dis, dis_shoulder, 0.1);
+    float d_shoulder = sdShoulder(p);
+    d = opSmoothUnion(d, d_shoulder, 0.1);
 
-    float dis_eyeBall = sdEyeBall(p);
-    dis = opSmoothSubtraction(dis_eyeBall, dis, 0.5);
+    float d_eyeBall = sdEyeBall(p);
+    d = opSmoothSubtraction(d_eyeBall, d, 0.5);
 
-    float dis_eyeBallSpace = sdEyeBallSpace(p);
-    dis = opSmoothSubtraction(dis_eyeBallSpace, dis, 0.5);
+    float d_eyeBallSpace = sdEyeBallSpace(p);
+    d = opSmoothSubtraction(d_eyeBallSpace, d, 0.5);
 
-    float dis_RightEye = sdRightEye(p);
-    dis = opSmoothUnion(dis, dis_RightEye, 0.1);
-    //dis = min(dis, dis_RightEye);
+    float d_RightEye = sdRightEye(p);
+    d = opSmoothUnion(d, d_RightEye, 0.1);
 
-    float dis_LeftEye = sdLeftEye(p);
-    dis = opSmoothUnion(dis, dis_LeftEye, 0.1);
-    //dis = min(dis, dis_LeftEye);
+    float d_LeftEye = sdLeftEye(p);
+    d = opSmoothUnion(d, d_LeftEye, 0.1);
 
-    //float dis_UpperLip = sdUpperLip(p);
-    //dis = opSmoothUnion(dis, dis_UpperLip, 0.5);
+    float d_Nose = sdNose(p);
+    d = opSmoothUnion(d, d_Nose, 0.1);
 
-    return dis;
+    return d;
 }
 
 float sdTorus(vec3 p, vec2 t) {
@@ -280,77 +344,69 @@ vec4 march(vec3 o, vec3 d) {
     float y_prime = 0.0;
     float z_prime = 0.0;
     vec3 n = vec3(0.0, 0.0, 0.0);
+    vec3 skin_color = vec3(197, 140, 133);
+    skin_color = rgb_to_frag(skin_color);
+    vec3 lip_color = vec3(214, 91, 91);
+    lip_color = rgb_to_frag(lip_color);
 
     while ((step++ < march_max_steps) && (t < march_max_distance)) {
         vec3 p = o + t * d;
         float f = march_max_distance; {
 
-            { // face and neck
-                //float dis_face_and_neck = sdFaceAndNeck(p);
-                //f = min(f, dis_face_and_neck);
-            }
-
-            { // shoulders
-                // sfloat dis_neck = sdNeck(p);
-                // f = min(f, dis_neck);
-                // float dis_shoulder = sdShoulder(p);
-                // f = min(f, dis_shoulder);
-            }
-
             if (true) {
-            }
-
-            if (true) {
-                float dis_model = sdModel(p);
-                f = min(f, dis_model);
+                float d_model = sdModel(p);
+                f = min(f, d_model);
 
                 if (f < march_hit_tolerance) {
-                    x_prime = sdUpperLip(vec3(p.x + EPSILON, p.y, p.z)) - sdUpperLip(vec3(p.x - EPSILON, p.y, p.z));
-                    y_prime = sdUpperLip(vec3(p.x, p.y + EPSILON, p.z)) - sdUpperLip(vec3(p.x, p.y - EPSILON, p.z));
-                    z_prime = sdUpperLip(vec3(p.x, p.y, p.z + EPSILON)) - sdUpperLip(vec3(p.x, p.y - EPSILON, p.z - EPSILON));
+                    x_prime = sdModel(get_X_plus(p)) - sdModel(get_X_minus(p));
+                    y_prime = sdModel(get_Y_plus(p)) - sdModel(get_Y_minus(p));
+                    z_prime = sdModel(get_Z_plus(p)) - sdModel(get_Z_minus(p));
                     n = normalize(vec3(x_prime, y_prime, z_prime));
-                    //vec3 skin_color = vec3(241, 194, 125);
-                    //vec3 skin_color = vec3(92, 64, 51);
-                    //vec3 skin_color = vec3(0.5, 0.5, 0.5);
-                    //vec3 skin_color = vec3(209, 163, 164);
-                    vec3 skin_color = vec3(238,193,173);
-                    return getColor(p, n, o, vec3(0.225,0.15,0.12));
-                    //return getColor(p, n, o, vec3(0.95, 0.76, 0.65));
-                    //return rgb_to_frag(skin_color);
+                    return getColor(p, n, o, skin_color);
                 }
 
             }
 
             {
-                //float dis_eye = sdEye(p);
-                //if (dis_eye < f) {
-                    //f = dis_eye;
-                    //hit_eye = 1;
-                //} else {
-                    //hit_eye = 0;
-                //}
-                float dis_lip = sdUpperLip(p);
-                f = min(f, dis_lip);
+                float d_lip = sdUpperLip(p);
+                f = min(f, d_lip);
 
                 if (f < march_hit_tolerance) {
-                    x_prime = sdUpperLip(vec3(p.x + EPSILON, p.y, p.z)) - sdUpperLip(vec3(p.x - EPSILON, p.y, p.z));
-                    y_prime = sdUpperLip(vec3(p.x, p.y + EPSILON, p.z)) - sdUpperLip(vec3(p.x, p.y - EPSILON, p.z));
-                    z_prime = sdUpperLip(vec3(p.x, p.y, p.z + EPSILON)) - sdUpperLip(vec3(p.x, p.y - EPSILON, p.z - EPSILON));
+                    x_prime = sdUpperLip(get_X_plus(p)) - sdUpperLip(get_X_minus(p));
+                    y_prime = sdUpperLip(get_Y_plus(p)) - sdUpperLip(get_Y_minus(p));
+                    z_prime = sdUpperLip(get_Z_plus(p)) - sdUpperLip(get_Z_minus(p));
                     n = normalize(vec3(x_prime, y_prime, z_prime));
-                    //vec3 lip_color = vec3(0.25, 0, 0);
-                    vec3 lip_color = vec3(214,91,91);
-                    return getColor(p, n, o, rgb_to_frag(lip_color));
-                    //vec3 lip_color = vec3(255 / 255, 0, 0);   
-                    //return rgb_to_frag(lip_color);
+                    return getColor(p, n, o, lip_color);
                 }
 
             }
-            if (false) {
-                float dis_eye = sdEyeBall(p);
-                f = min(f, dis_eye);
 
+            if (false) {
+                float d_nose = sdNose(p);
+                f = min(f, d_nose);
+                
                 if (f < march_hit_tolerance) {
-                    return vec4(1.0, 0.0, 0.0, 1.0);
+                    x_prime = sdNose(get_X_plus(p)) - sdNose(get_X_minus(p));
+                    y_prime = sdNose(get_Y_plus(p)) - sdNose(get_Y_minus(p));
+                    z_prime = sdNose(get_Z_plus(p)) - sdNose(get_Z_minus(p));
+                    n = normalize(vec3(x_prime, y_prime, z_prime));
+                    vec3 nose_color = vec3(214, 91, 91);
+                    return getColor(p, n, o, rgb_to_frag(nose_color));
+                }
+
+            }
+
+            if (false) {
+                float d_nose_hole = sdNoseHoleLeft(p);
+                f = min(f, d_nose_hole);
+                
+                if (f < march_hit_tolerance) {
+                    x_prime = sdNoseHoleLeft(get_X_plus(p)) - sdNoseHoleLeft(get_X_minus(p));
+                    y_prime = sdNoseHoleLeft(get_Y_plus(p)) - sdNoseHoleLeft(get_Y_minus(p));
+                    z_prime = sdNoseHoleLeft(get_Z_plus(p)) - sdNoseHoleLeft(get_Z_minus(p));
+                    n = normalize(vec3(x_prime, y_prime, z_prime));
+                    vec3 nose_hole_color = vec3(214, 91, 91);
+                    return getColor(p, n, o, rgb_to_frag(nose_hole_color));
                 }
 
             }
@@ -363,19 +419,12 @@ vec4 march(vec3 o, vec3 d) {
                     return vec4(1.0, 1.0, 1.0, 1.0);
                 }
             }
+
         }
-        //if (f < march_hit_tolerance) { // hit!
-            // return vec4(0.5 + 0.5 * cos(TAU * (vec3(0.0, 0.33, -0.33) - vec3(0.3 * p.z))), 1.0);
-            //vec3 eye_color = vec3(255, 255, 255);
 
-            //if (hit_lip == 1) {
-                //return rgb_to_frag(eye_color); 
-            //}
-
-            //return rgb_to_frag(skin_color);
-        //}
         t += f; //clamp(f, 0.005, 0.1); // make the number smaller if you're getting weird artifacts
     }
+
     return vec4(0.0);
 }
 
