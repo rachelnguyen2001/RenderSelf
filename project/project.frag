@@ -184,6 +184,13 @@ vec4 smin(vec4 a, vec4 b, float k) {
     return vec4(min(a.x,  b.x) - m, mix(a.yzw, b.yzw,(a.x<b.x)?n:1.0-n));
 }
 
+vec4 smax(vec4 a, vec4 b, float k) {
+    float h = max(k-abs(a.x-b.x),0.0);
+    float m = 0.25*h*h/k;
+    float n = 0.50*  h/k;
+    return vec4(max(a.x,  b.x) + m, mix(a.yzw, b.yzw,(a.x<b.x)?n:1.0-n));
+}
+
 // From https://www.shadertoy.com/view/NsffWj
 vec3 inflate(vec3 p, float r) {
     float pl = length(p);
@@ -239,27 +246,63 @@ float sdLowerHead(vec3 p, vec3 r) {
 float sdEyeBall(vec3 p) {
     vec3 q = vec3(sqrt(p.x*p.x + 0.0005), p.y, p.z);
     vec3 eyeBall_c = vec3(0.35, 0.6, 0.5);
-    vec3 eyeBall_r = vec3(0.1, 0.05, 0.3);
+    vec3 eyeBall_r = vec3(0.01, 0.02, 0.1);
     return sdEllipsoid(q - eyeBall_c, eyeBall_r);
 }
 
 float sdEyeBallSpace(vec3 p) {
     vec3 q = vec3(sqrt(p.x*p.x + 0.0005), p.y, p.z);
     vec3 eyeBall_c = vec3(0.35, 0.6, 0.6);
-    vec3 eyeBall_r = vec3(0.04, 0.05, 0.2);
+    vec3 eyeBall_r = vec3(0.01, 0.01, 0.04);
     return sdEllipsoid(q - eyeBall_c, eyeBall_r);
 }
 
 float sdRightEye(vec3 p) {
-    vec3 eye_c = vec3(0.35, 0.55, 0.7);
-    float eye_r = 0.15;
-    return sdSphere(p - eye_c, eye_r);
+    vec3 c = vec3(0.35, 0.55, 0.6);
+    float r = 0.15;
+    return sdSphere(p - c, r);
 }
 
 float sdLeftEye(vec3 p) {
-    vec3 eye_c = vec3(-0.35, 0.55, 0.7);
-    float eye_r = 0.15;
-    return sdSphere(p - eye_c, eye_r);
+    vec3 c = vec3(-0.35, 0.55, 0.6);
+    float r = 0.15;
+    return sdSphere(p - c, r);
+}
+
+float sdRightEyeBound(vec3 p) {
+    vec3 c = vec3(0.33, 0.53, 0.85);
+    float r = 0.12;
+    return sdSphere(p - c, r);
+}
+
+float sdRightEyeBoundTwo(vec3 p) {
+    vec3 c = vec3(0.33, 0.529, 0.87);
+    float r = 0.11;
+    return sdSphere(p - c, r);
+}
+
+float sdRightEyeBoundThree(vec3 p) {
+    vec3 c = vec3(0.33, 0.528, 1);
+    float r = 0.05;
+    return sdSphere(p - c, r);
+}
+
+float sdLeftEyeBound(vec3 p) {
+    vec3 c = vec3(-0.33, 0.53, 0.85);
+    float r = 0.12;
+    return sdSphere(p - c, r);
+}
+
+float sdLeftEyeBoundTwo(vec3 p) {
+    vec3 c = vec3(-0.33, 0.529, 0.87);
+    float r = 0.11;
+    return sdSphere(p - c, r);
+}
+
+float sdLeftEyeBoundThree(vec3 p) {
+    vec3 c = vec3(-0.33, 0.528, 1);
+    float r = 0.05;
+    return sdSphere(p - c, r);
 }
 
 float sdFace(vec3 p) {
@@ -295,7 +338,9 @@ float sdUpperLip(vec3 p) {
 float sdModel(vec3 p) {
     float d_face = sdFace(p);
     float d_neck = sdNeck(p);
+    //vec4 ans = smin(vec4(d_face, 0.0, 0.0, 0.0), vec4(d_neck, 0.0, 0.0, 0.0), 0.02);
     float d = opSmoothUnion(d_face, d_neck, 0.02);
+    //float d = ans.x;
     
     float d_shoulder = sdShoulder(p);
     d = opSmoothUnion(d, d_shoulder, 0.1);
@@ -306,11 +351,11 @@ float sdModel(vec3 p) {
     float d_eyeBallSpace = sdEyeBallSpace(p);
     d = opSmoothSubtraction(d_eyeBallSpace, d, 0.5);
 
-    float d_RightEye = sdRightEye(p);
-    d = opSmoothUnion(d, d_RightEye, 0.1);
+    //float d_RightEye = sdRightEye(p);
+    //d = opSmoothUnion(d, d_RightEye, 0.1);
 
-    float d_LeftEye = sdLeftEye(p);
-    d = opSmoothUnion(d, d_LeftEye, 0.1);
+    //float d_LeftEye = sdLeftEye(p);
+    //d = opSmoothUnion(d, d_LeftEye, 0.1);
 
     float d_Nose = sdNose(p);
     d = opSmoothUnion(d, d_Nose, 0.1);
@@ -328,15 +373,9 @@ float sdBox(vec3 p, vec3 b) {
 }
 
 vec4 march(vec3 o, vec3 d) {
-    // params
     const int   march_max_steps     = 100;
     const float march_hit_tolerance = 0.001;
     const float march_max_distance  = 100.0;
-    // o -- camera origin               
-    // t -- distance marched along ray  
-    // d -- camera direction            
-    // p -- current position along ray  
-    // f -- distance to implicit surface
     float t = 0.0;
     int step = 0;
     int hit_lip = 0;
@@ -356,14 +395,172 @@ vec4 march(vec3 o, vec3 d) {
             if (true) {
                 float d_model = sdModel(p);
                 f = min(f, d_model);
+                float x_model = sdModel(get_X_plus(p)) - sdModel(get_X_minus(p));
+                float y_model = sdModel(get_Y_plus(p)) - sdModel(get_Y_minus(p));
+                float z_model = sdModel(get_Z_plus(p)) - sdModel(get_Z_minus(p));
 
                 if (f < march_hit_tolerance) {
-                    x_prime = sdModel(get_X_plus(p)) - sdModel(get_X_minus(p));
-                    y_prime = sdModel(get_Y_plus(p)) - sdModel(get_Y_minus(p));
-                    z_prime = sdModel(get_Z_plus(p)) - sdModel(get_Z_minus(p));
-                    n = normalize(vec3(x_prime, y_prime, z_prime));
+                    n = normalize(vec3(x_model, y_model, z_model));
                     return getColor(p, n, o, skin_color);
                 }
+
+                float d_RightEye = sdRightEye(p);
+                float x_r_eye = sdRightEye(get_X_plus(p)) - sdRightEye(get_X_minus(p));
+                float y_r_eye = sdRightEye(get_Y_plus(p)) - sdRightEye(get_Y_minus(p));
+                float z_r_eye = sdRightEye(get_Z_plus(p)) - sdRightEye(get_Z_minus(p));
+                vec4 dis = smin(vec4(d_model, x_model, y_model, z_model), vec4(d_RightEye, x_r_eye, y_r_eye, z_r_eye), 0.03);
+                f = min(f, dis.x);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(dis.yzw);
+                    return getColor(p, n, o, vec3(1.0, 1.0, 1.0));                
+                }
+
+                float d_LeftEye = sdLeftEye(p);
+                float x_l_eye = sdLeftEye(get_X_plus(p)) - sdLeftEye(get_X_minus(p));
+                float y_l_eye = sdLeftEye(get_Y_plus(p)) - sdLeftEye(get_Y_minus(p));
+                float z_l_eye = sdLeftEye(get_Z_plus(p)) - sdLeftEye(get_Z_minus(p));
+                dis = smin(dis, vec4(d_LeftEye, x_l_eye, y_l_eye, z_l_eye), 0.03);
+                f = min(f, dis.x);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(dis.yzw);
+                    return getColor(p, n, o, vec3(1.0, 1.0, 1.0));                
+                }
+
+                float d_RightEyeBound = sdRightEyeBound(p);
+                float x_r_bound = sdRightEyeBound(get_X_plus(p)) - sdRightEyeBound(get_X_minus(p));
+                float y_r_bound = sdRightEyeBound(get_Y_plus(p)) - sdRightEyeBound(get_Y_minus(p));
+                float z_r_bound = sdRightEyeBound(get_Z_plus(p)) - sdRightEyeBound(get_Z_minus(p));
+                //dis = smin(dis, vec4(d_RigthEyeBound, x_r_bound, y_r_bound, z_r_bound), 0.2);
+                f = min(f, d_RightEyeBound);
+                
+                if (f < march_hit_tolerance) {
+                    n = normalize(vec3(x_r_bound, y_r_bound, z_r_bound));
+                    return getColor(p, n, o, vec3(0.0, 0.0, 0.0));                
+                }
+
+                float d_RightEyeBoundTwo = sdRightEyeBoundTwo(p);
+                float x_r_bound_t = sdRightEyeBoundTwo(get_X_plus(p)) - sdRightEyeBoundTwo(get_X_minus(p));
+                float y_r_bound_t = sdRightEyeBoundTwo(get_Y_plus(p)) - sdRightEyeBoundTwo(get_Y_minus(p));
+                float z_r_bound_t = sdRightEyeBoundTwo(get_Z_plus(p)) - sdRightEyeBoundTwo(get_Z_minus(p));
+                //dis = smin(dis, vec4(d_RightEyeBoundTwo, x_r_bound_t, y_r_bound_t, z_r_bound_t), 0.1);
+                f = min(f, d_RightEyeBoundTwo);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(vec3(x_r_bound_t, y_r_bound_t, z_r_bound_t));
+                    return getColor(p, n, o, rgb_to_frag(vec3(78,53,36)) + 0.09*length(p));
+                }
+
+                float d_RightEyeBoundThree = sdRightEyeBoundThree(p);
+                float x_r_bound_th = sdRightEyeBoundThree(get_X_plus(p)) - sdRightEyeBoundThree(get_X_minus(p));
+                float y_r_bound_th = sdRightEyeBoundThree(get_Y_plus(p)) - sdRightEyeBoundThree(get_Y_minus(p));
+                float z_r_bound_th = sdRightEyeBoundThree(get_Z_plus(p)) - sdRightEyeBoundThree(get_Z_minus(p));
+                //dis = smin(dis, vec4(d_RightEyeBoundThree, x_r_bound_th, y_r_bound_th, z_r_bound_th), 0.101);
+                f = min(f, d_RightEyeBoundThree);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(vec3(x_r_bound_th, y_r_bound_th, z_r_bound_th));
+                    return getColor(p, n, o, vec3(0, 0, 0));
+                }
+
+                float d_LeftEyeBound = sdLeftEyeBound(p);
+                float x_l_bound = sdLeftEyeBound(get_X_plus(p)) - sdLeftEyeBound(get_X_minus(p));
+                float y_l_bound = sdLeftEyeBound(get_Y_plus(p)) - sdLeftEyeBound(get_Y_minus(p));
+                float z_l_bound = sdLeftEyeBound(get_Z_plus(p)) - sdLeftEyeBound(get_Z_minus(p));
+                f = min(f, d_LeftEyeBound);
+                
+                if (f < march_hit_tolerance) {
+                    n = normalize(vec3(x_l_bound, y_l_bound, z_l_bound));
+                    return getColor(p, n, o, vec3(0.0, 0.0, 0.0));                
+                }
+
+                float d_LeftEyeBoundTwo = sdLeftEyeBoundTwo(p);
+                float x_l_bound_t = sdLeftEyeBoundTwo(get_X_plus(p)) - sdLeftEyeBoundTwo(get_X_minus(p));
+                float y_l_bound_t = sdLeftEyeBoundTwo(get_Y_plus(p)) - sdLeftEyeBoundTwo(get_Y_minus(p));
+                float z_l_bound_t = sdLeftEyeBoundTwo(get_Z_plus(p)) - sdLeftEyeBoundTwo(get_Z_minus(p));
+                f = min(f, d_LeftEyeBoundTwo);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(vec3(x_l_bound_t, y_l_bound_t, z_l_bound_t));
+                    return getColor(p, n, o, rgb_to_frag(vec3(78,53,36)) + 0.09*length(p));
+                }
+
+                float d_LeftEyeBoundThree = sdLeftEyeBoundThree(p);
+                float x_l_bound_th = sdLeftEyeBoundThree(get_X_plus(p)) - sdLeftEyeBoundThree(get_X_minus(p));
+                float y_l_bound_th = sdLeftEyeBoundThree(get_Y_plus(p)) - sdLeftEyeBoundThree(get_Y_minus(p));
+                float z_l_bound_th = sdLeftEyeBoundThree(get_Z_plus(p)) - sdLeftEyeBoundThree(get_Z_minus(p));
+                f = min(f, d_LeftEyeBoundThree);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(vec3(x_l_bound_th, y_l_bound_th, z_l_bound_th));
+                    return getColor(p, n, o, vec3(0, 0, 0));
+                }
+
+            }
+
+            if (false) {
+                float d_face = sdFace(p);
+                float face_x = sdFace(get_X_plus(p)) - sdFace(get_X_minus(p));
+                float face_y = sdFace(get_Y_plus(p)) - sdFace(get_Y_minus(p));
+                float face_z = sdFace(get_Z_plus(p)) - sdFace(get_Z_minus(p));
+                vec4 face = vec4(d_face, face_x, face_y, face_z);
+
+                float d_neck = sdNeck(p);
+                float neck_x = sdNeck(get_X_plus(p)) - sdNeck(get_X_minus(p));
+                float neck_y = sdNeck(get_Y_plus(p)) - sdNeck(get_Y_minus(p));
+                float neck_z = sdNeck(get_Z_plus(p)) - sdNeck(get_Z_minus(p));
+                vec4 neck = vec4(d_neck, neck_x, neck_y, neck_z);
+
+                vec4 d = smin(face, neck, 0.02);
+                f = min(f, d.x);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(d.yzw);
+                    return getColor(p, n, o, skin_color);
+                }    
+
+                float d_shoulder = sdShoulder(p);
+                float shoulder_x = sdShoulder(get_X_plus(p)) - sdShoulder(get_X_minus(p));
+                float shoulder_y = sdShoulder(get_Y_plus(p)) - sdShoulder(get_Y_minus(p));
+                float shoulder_z = sdShoulder(get_Z_plus(p)) - sdShoulder(get_Z_minus(p));
+                vec4 shoulder = vec4(d_shoulder, shoulder_x, shoulder_y, shoulder_z);
+                d = smin(d, shoulder, 0.1);
+                f = min(f, d.x);
+
+                if (f < march_hit_tolerance) {
+                    n = normalize(d.yzw);
+                    return getColor(p, n, o, skin_color);
+                }
+
+                float d_eyeBall = sdEyeBall(p);
+                d_eyeBall = opSmoothSubtraction(d_eyeBall, d.x, 0.5);
+                f = min(f, d_eyeBall);
+
+                if (f < march_hit_tolerance) {
+                    return vec4(1.0, 1.0, 1.0, 1.0);
+                    //n = normalize(d.yzw);
+                    //return getColor(p, n, o, skin_color);
+                }
+
+
+
+    //d = opSmoothSubtraction(d_eyeBall, d, 0.5);
+
+
+
+                //float d = opSmoothUnion(d_face, d_neck, 0.02);
+
+                //float d_model = sdModel(p);
+                //f = min(f, d_model);
+
+                //if (f < march_hit_tolerance) {
+                    //x_prime = sdModel(get_X_plus(p)) - sdModel(get_X_minus(p));
+                    //y_prime = sdModel(get_Y_plus(p)) - sdModel(get_Y_minus(p));
+                    //z_prime = sdModel(get_Z_plus(p)) - sdModel(get_Z_minus(p));
+                    //n = normalize(vec3(x_prime, y_prime, z_prime));
+                    //return getColor(p, n, o, skin_color);
+                //}
 
             }
 
@@ -378,7 +575,32 @@ vec4 march(vec3 o, vec3 d) {
                     n = normalize(vec3(x_prime, y_prime, z_prime));
                     return getColor(p, n, o, lip_color);
                 }
+            }
 
+            if (false) {
+                float d_RightEye = sdRightEye(p);
+                f = min(f, d_RightEye);
+
+                if (f < march_hit_tolerance) {
+                    x_prime = sdRightEye(get_X_plus(p)) - sdRightEye(get_X_minus(p));
+                    y_prime = sdRightEye(get_Y_plus(p)) - sdRightEye(get_Y_minus(p));
+                    z_prime = sdRightEye(get_Z_plus(p)) - sdRightEye(get_Z_minus(p));
+                    n = normalize(vec3(x_prime, y_prime, z_prime));
+                    return getColor(p, n, o, vec3(1.0, 1.0, 1.0));                
+                }
+            }
+
+            if (false) {
+                float d_LeftEye = sdLeftEye(p);
+                f = min(f, d_LeftEye);
+
+                if (f < march_hit_tolerance) {
+                    x_prime = sdLeftEye(get_X_plus(p)) - sdLeftEye(get_X_minus(p));
+                    y_prime = sdLeftEye(get_Y_plus(p)) - sdLeftEye(get_Y_minus(p));
+                    z_prime = sdLeftEye(get_Z_plus(p)) - sdLeftEye(get_Z_minus(p));
+                    n = normalize(vec3(x_prime, y_prime, z_prime));
+                    return getColor(p, n, o, vec3(1.0, 1.0, 1.0));                
+                }
             }
 
             if (false) {
