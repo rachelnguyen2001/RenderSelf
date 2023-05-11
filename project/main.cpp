@@ -58,6 +58,7 @@ void platform() {
     real p_z = 0.0;
     real p_r = 0.0;
     int lip_color = 0;
+    int skin_color = 0;
 
     while (cow_begin_frame()) {
 
@@ -68,12 +69,13 @@ void platform() {
         }
 
         if (playing || gui_button_custom("PLAY", 'p')) {
-            // sound_play_sound("codebase/music.wav");
+            sound_play_sound("codebase/music.wav");
             playing = true;
 
             // gui_checkbox("Lightning", &light, 'l');
             gui_slider("Number of Lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
             gui_slider("Lip Color", &lip_color, 0, 4, 'd', 'f');
+            gui_slider("Skin Color", &skin_color, 0, 4, 'r', 't');
 
             // if (light) {
                 // gui_slider("Number of lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
@@ -108,6 +110,7 @@ void platform() {
             shader_set_uniform(&shader, "p_z", p_z);
             shader_set_uniform(&shader, "p_r", p_r);
             shader_set_uniform(&shader, "lip", lip_color);
+            shader_set_uniform(&shader, "skin", skin_color);
 
             shader_pass_vertex_attribute(&shader, mesh.num_vertices, mesh.vertex_positions);
             shader_draw(&shader, mesh.num_triangles, mesh.triangle_indices);
