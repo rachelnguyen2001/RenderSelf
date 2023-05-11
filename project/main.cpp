@@ -43,6 +43,8 @@ void platform() {
     IndexedTriangleMesh3D mesh = library.meshes.square;
     Camera3D camera = { 5.0 };
     real iTime = 0.0;
+    bool playing = false;
+    // bool light = false;
 
     real ambientStrength = 0.1;
     real diffuseStrength = 0.6;
@@ -55,42 +57,62 @@ void platform() {
     real p_y = 0.0;
     real p_z = 0.0;
     real p_r = 0.0;
+    int lip_color = 0;
 
     while (cow_begin_frame()) {
-        //camera_move(&camera);
-        gui_slider("Number of lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
-        gui_printf("");
-        gui_slider("Ambient Strength", &ambientStrength, 0.0, 2.0);
-        gui_slider("Diffuse Strength", &diffuseStrength, 0.0, 2.0);
-        gui_slider("Specular Strength", &specularStrength, 0.0, 2.0);
-        gui_slider("Shininess", &shininess, 0.0, 256.0);
 
-        gui_slider("p_x", &p_x, -1.0, 1.0);
-        gui_slider("p_y", &p_y, -1.0, 1.0);
-        gui_slider("p_z", &p_z, -1.0, 1.0);
-        gui_slider("p_r", &p_r, 0.0, 1.0);
+        if (!playing) {
+            text_draw(globals.NDC_from_Screen, "STYLISH", {950.0, 600.0, 0.0}, {1.0, 1.0, 1.0}, 100);
+            text_draw(globals.NDC_from_Screen, "Want to know which makeup look suits you best?", {700.0, 800.0, 0.0}, {1.0, 1.0, 1.0}, 35);
+            text_draw(globals.NDC_from_Screen, "Look no further. We can help!", {950.0, 900.0, 0.0}, {1.0, 1.0, 1.0}, 35);
+        }
 
-        shader_set_uniform(&shader, "iTime", iTime);
-        shader_set_uniform(&shader, "iResolution", window_get_size());
-        shader_set_uniform(&shader, "C", camera_get_C(&camera));
+        if (playing || gui_button_custom("PLAY", 'p')) {
+            // sound_play_sound("codebase/music.wav");
+            playing = true;
 
-        shader_set_uniform(&shader, "num_lights", num_lights);
-        shader_set_uniform(&shader, "light_positions_world", num_lights, light_positions_world);
-        shader_set_uniform(&shader, "light_colors", num_lights, light_colors);
-        shader_set_uniform(&shader, "ambientStrength", ambientStrength);
-        shader_set_uniform(&shader, "diffuseStrength", diffuseStrength);
-        shader_set_uniform(&shader, "specularStrength", specularStrength);
-        shader_set_uniform(&shader, "shininess", shininess);
-        shader_set_uniform(&shader, "constant", constant);
-        shader_set_uniform(&shader, "linear", linear);
-        shader_set_uniform(&shader, "quadratic", quadratic);
-        shader_set_uniform(&shader, "p_x", p_x);
-        shader_set_uniform(&shader, "p_y", p_y);
-        shader_set_uniform(&shader, "p_z", p_z);
-        shader_set_uniform(&shader, "p_r", p_r);
+            // gui_checkbox("Lightning", &light, 'l');
+            gui_slider("Number of Lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
+            gui_slider("Lip Color", &lip_color, 0, 4, 'd', 'f');
 
-        shader_pass_vertex_attribute(&shader, mesh.num_vertices, mesh.vertex_positions);
-        shader_draw(&shader, mesh.num_triangles, mesh.triangle_indices);
+            // if (light) {
+                // gui_slider("Number of lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
+                // gui_printf("");
+                // gui_slider("Ambient Strength", &ambientStrength, 0.0, 2.0);
+                // gui_slider("Diffuse Strength", &diffuseStrength, 0.0, 2.0);
+                // gui_slider("Specular Strength", &specularStrength, 0.0, 2.0);
+                // gui_slider("Shininess", &shininess, 0.0, 256.0);
+            // }
+  
+            // gui_slider("p_x", &p_x, -1.0, 1.0);
+            // gui_slider("p_y", &p_y, -1.0, 1.0);
+            // gui_slider("p_z", &p_z, -1.0, 1.0);
+            // gui_slider("p_r", &p_r, 0.0, 1.0);
+
+            shader_set_uniform(&shader, "iTime", iTime);
+            shader_set_uniform(&shader, "iResolution", window_get_size());
+            shader_set_uniform(&shader, "C", camera_get_C(&camera));
+
+            shader_set_uniform(&shader, "num_lights", num_lights);
+            shader_set_uniform(&shader, "light_positions_world", num_lights, light_positions_world);
+            shader_set_uniform(&shader, "light_colors", num_lights, light_colors);
+            shader_set_uniform(&shader, "ambientStrength", ambientStrength);
+            shader_set_uniform(&shader, "diffuseStrength", diffuseStrength);
+            shader_set_uniform(&shader, "specularStrength", specularStrength);
+            shader_set_uniform(&shader, "shininess", shininess);
+            shader_set_uniform(&shader, "constant", constant);
+            shader_set_uniform(&shader, "linear", linear);
+            shader_set_uniform(&shader, "quadratic", quadratic);
+            shader_set_uniform(&shader, "p_x", p_x);
+            shader_set_uniform(&shader, "p_y", p_y);
+            shader_set_uniform(&shader, "p_z", p_z);
+            shader_set_uniform(&shader, "p_r", p_r);
+            shader_set_uniform(&shader, "lip", lip_color);
+
+            shader_pass_vertex_attribute(&shader, mesh.num_vertices, mesh.vertex_positions);
+            shader_draw(&shader, mesh.num_triangles, mesh.triangle_indices);
+        }
+
     }
 }
 

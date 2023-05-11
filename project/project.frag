@@ -17,6 +17,7 @@ uniform float p_x;
 uniform float p_y;
 uniform float p_z;
 uniform float p_r;
+uniform int lip;
 out vec4 fragColor;
 
 float EPSILON = 0.1;
@@ -209,13 +210,13 @@ float sdNoseWingRight(vec3 p) {
 }
 
 float sdNoseHoleLeft(vec3 p) {
-    vec3 c = vec3(-0.05, -0.1, 0.65);
-    return sdSphere(p - c, 0.007);
+    vec3 c = vec3(-0.07, -0.11, 0.65);
+    return sdSphere(p - c, 0.01);
 }
 
 float sdNoseHoleRight(vec3 p) {
-    vec3 c = vec3(0.05, -0.1, 0.65);
-    return sdSphere(p - c, 0.007);
+    vec3 c = vec3(0.07, -0.11, 0.65);
+    return sdSphere(p - c, 0.01);
 }
 
 float sdNose(vec3 p) {
@@ -246,7 +247,7 @@ float sdLowerHead(vec3 p, vec3 r) {
 float sdEyeBall(vec3 p) {
     vec3 q = vec3(sqrt(p.x*p.x + 0.0005), p.y, p.z);
     vec3 eyeBall_c = vec3(0.35, 0.6, 0.5);
-    vec3 eyeBall_r = vec3(0.01, 0.02, 0.1);
+    vec3 eyeBall_r = vec3(0.01, 0.01, 0.05);
     return sdEllipsoid(q - eyeBall_c, eyeBall_r);
 }
 
@@ -259,13 +260,13 @@ float sdEyeBallSpace(vec3 p) {
 
 float sdRightEye(vec3 p) {
     vec3 c = vec3(0.35, 0.55, 0.6);
-    float r = 0.15;
+    float r = 0.18;
     return sdSphere(p - c, r);
 }
 
 float sdLeftEye(vec3 p) {
     vec3 c = vec3(-0.35, 0.55, 0.6);
-    float r = 0.15;
+    float r = 0.18;
     return sdSphere(p - c, r);
 }
 
@@ -338,10 +339,8 @@ float sdUpperLip(vec3 p) {
 float sdModel(vec3 p) {
     float d_face = sdFace(p);
     float d_neck = sdNeck(p);
-    //vec4 ans = smin(vec4(d_face, 0.0, 0.0, 0.0), vec4(d_neck, 0.0, 0.0, 0.0), 0.02);
     float d = opSmoothUnion(d_face, d_neck, 0.02);
-    //float d = ans.x;
-    
+
     float d_shoulder = sdShoulder(p);
     d = opSmoothUnion(d, d_shoulder, 0.1);
 
@@ -351,25 +350,10 @@ float sdModel(vec3 p) {
     float d_eyeBallSpace = sdEyeBallSpace(p);
     d = opSmoothSubtraction(d_eyeBallSpace, d, 0.5);
 
-    //float d_RightEye = sdRightEye(p);
-    //d = opSmoothUnion(d, d_RightEye, 0.1);
-
-    //float d_LeftEye = sdLeftEye(p);
-    //d = opSmoothUnion(d, d_LeftEye, 0.1);
-
     float d_Nose = sdNose(p);
     d = opSmoothUnion(d, d_Nose, 0.1);
 
     return d;
-}
-
-float sdTorus(vec3 p, vec2 t) {
-    vec2 q = vec2(length(p.xz)-t.x,p.y);
-    return length(q)-t.y;
-}
-float sdBox(vec3 p, vec3 b) {
-    vec3 q = abs(p) - b;
-    return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
 vec4 march(vec3 o, vec3 d) {
@@ -383,10 +367,17 @@ vec4 march(vec3 o, vec3 d) {
     float y_prime = 0.0;
     float z_prime = 0.0;
     vec3 n = vec3(0.0, 0.0, 0.0);
+    vec3 lip_colors[5] = vec3[5](vec3(249,135,135), vec3(231,106,106), vec3(214,91,91), vec3(193,75,75), vec3(184,63,63));
+
+    for (int i = 0; i < 5; ++i) {
+        lip_colors[i] = rgb_to_frag(lip_colors[i]);
+    }
+
     vec3 skin_color = vec3(197, 140, 133);
     skin_color = rgb_to_frag(skin_color);
     vec3 lip_color = vec3(214, 91, 91);
     lip_color = rgb_to_frag(lip_color);
+
 
     while ((step++ < march_max_steps) && (t < march_max_distance)) {
         vec3 p = o + t * d;
@@ -408,7 +399,7 @@ vec4 march(vec3 o, vec3 d) {
                 float x_r_eye = sdRightEye(get_X_plus(p)) - sdRightEye(get_X_minus(p));
                 float y_r_eye = sdRightEye(get_Y_plus(p)) - sdRightEye(get_Y_minus(p));
                 float z_r_eye = sdRightEye(get_Z_plus(p)) - sdRightEye(get_Z_minus(p));
-                vec4 dis = smin(vec4(d_model, x_model, y_model, z_model), vec4(d_RightEye, x_r_eye, y_r_eye, z_r_eye), 0.03);
+                vec4 dis = smin(vec4(d_model, x_model, y_model, z_model), vec4(d_RightEye, x_r_eye, y_r_eye, z_r_eye), 0.001);
                 f = min(f, dis.x);
 
                 if (f < march_hit_tolerance) {
@@ -420,7 +411,7 @@ vec4 march(vec3 o, vec3 d) {
                 float x_l_eye = sdLeftEye(get_X_plus(p)) - sdLeftEye(get_X_minus(p));
                 float y_l_eye = sdLeftEye(get_Y_plus(p)) - sdLeftEye(get_Y_minus(p));
                 float z_l_eye = sdLeftEye(get_Z_plus(p)) - sdLeftEye(get_Z_minus(p));
-                dis = smin(dis, vec4(d_LeftEye, x_l_eye, y_l_eye, z_l_eye), 0.03);
+                dis = smin(dis, vec4(d_LeftEye, x_l_eye, y_l_eye, z_l_eye), 0.001);
                 f = min(f, dis.x);
 
                 if (f < march_hit_tolerance) {
@@ -456,7 +447,6 @@ vec4 march(vec3 o, vec3 d) {
                 float x_r_bound_th = sdRightEyeBoundThree(get_X_plus(p)) - sdRightEyeBoundThree(get_X_minus(p));
                 float y_r_bound_th = sdRightEyeBoundThree(get_Y_plus(p)) - sdRightEyeBoundThree(get_Y_minus(p));
                 float z_r_bound_th = sdRightEyeBoundThree(get_Z_plus(p)) - sdRightEyeBoundThree(get_Z_minus(p));
-                //dis = smin(dis, vec4(d_RightEyeBoundThree, x_r_bound_th, y_r_bound_th, z_r_bound_th), 0.101);
                 f = min(f, d_RightEyeBoundThree);
 
                 if (f < march_hit_tolerance) {
@@ -495,6 +485,17 @@ vec4 march(vec3 o, vec3 d) {
                 if (f < march_hit_tolerance) {
                     n = normalize(vec3(x_l_bound_th, y_l_bound_th, z_l_bound_th));
                     return getColor(p, n, o, vec3(0, 0, 0));
+                }
+
+                float d_lip = sdUpperLip(p);
+                f = min(f, d_lip);
+
+                if (f < march_hit_tolerance) {
+                    x_prime = sdUpperLip(get_X_plus(p)) - sdUpperLip(get_X_minus(p));
+                    y_prime = sdUpperLip(get_Y_plus(p)) - sdUpperLip(get_Y_minus(p));
+                    z_prime = sdUpperLip(get_Z_plus(p)) - sdUpperLip(get_Z_minus(p));
+                    n = normalize(vec3(x_prime, y_prime, z_prime));
+                    return getColor(p, n, o, lip_colors[lip]);
                 }
 
             }
@@ -573,7 +574,7 @@ vec4 march(vec3 o, vec3 d) {
                     y_prime = sdUpperLip(get_Y_plus(p)) - sdUpperLip(get_Y_minus(p));
                     z_prime = sdUpperLip(get_Z_plus(p)) - sdUpperLip(get_Z_minus(p));
                     n = normalize(vec3(x_prime, y_prime, z_prime));
-                    return getColor(p, n, o, lip_color);
+                    return getColor(p, n, o, lip_colors[lip]);
                 }
             }
 
