@@ -2145,8 +2145,6 @@ bool gui_button(char *name, int hotkey = '\0') {
     if (hotkey) L -= 12;
 
     real H = 24;
-    //COW1._gui_x_curr = 300;
-    //COW1._gui_y_curr = 300;
 
     real box[8] = {
         COW1._gui_x_curr    , COW1._gui_y_curr    ,

@@ -19,17 +19,34 @@ uniform float p_z;
 uniform float p_r;
 uniform int lip;
 uniform int skin;
+uniform int eye;
+uniform int lip_size;
 out vec4 fragColor;
 
 float EPSILON = 0.1;
 float TAU = 6.28318530718;
 int RGB = 255;
 
+float inverse_lerp(float a, float b, float p) {
+    return (p-a)/(b-a);
+}
+
+float linear_remap(float p, float a, float b, float c, float d) {
+    return mix(c, d, inverse_lerp(a,b,p));
+}
+
 vec3 rgb_to_frag(vec3 c) {
     c.x /= RGB;
     c.y /= RGB;
     c.z /= RGB;
     return c;
+}
+
+vec3 get_backGround_Color(vec3 p) {
+    vec3 blue = rgb_to_frag(vec3(135,206,250));
+    vec3 deep_blue = rgb_to_frag(vec3(0,0,139));
+    float lambda = pow(2, -8*max(0, p.y));
+    return (blue + 0.5*p.y)*lambda + (1 - lambda)*deep_blue;
 }
 
 vec4 getColor(vec3 p, vec3 n, vec3 o, vec3 c) {
@@ -334,7 +351,8 @@ float sdShoulder(vec3 p) {
 
 float sdUpperLip(vec3 p) {
     vec3 center = vec3(0.01, -0.4, 0.5);
-    return opRevolutionForBeizer(p - center, 0.12, vec2(0.0, 0.0), vec2(0.5, 0.25), vec2(-0.5, 0.25));
+    float r = linear_remap(lip_size, 0, 10, 0.08, 0.18);
+    return opRevolutionForBeizer(p - center, r, vec2(0.0, 0.0), vec2(0.5, 0.25), vec2(-0.5, 0.25));
 }
 
 float sdModel(vec3 p) {
@@ -370,17 +388,13 @@ vec4 march(vec3 o, vec3 d) {
     vec3 n = vec3(0.0, 0.0, 0.0);
     vec3 lip_colors[5] = vec3[5](vec3(249,135,135), vec3(231,106,106), vec3(214,91,91), vec3(193,75,75), vec3(184,63,63));
     vec3 skin_colors[5] = vec3[5](vec3(255,219,172), vec3(241,194,125), vec3(224,172,105), vec3(198,134,66), vec3(141,85,36));
+    vec3 eye_colors[5] = vec3[5](vec3(161, 202, 241), vec3(13, 152, 186), vec3(13, 81, 118), vec3(141, 155, 135), vec3(69, 69, 69));
 
     for (int i = 0; i < 5; ++i) {
         lip_colors[i] = rgb_to_frag(lip_colors[i]);
         skin_colors[i] = rgb_to_frag(skin_colors[i]);
+        eye_colors[i] = rgb_to_frag(eye_colors[i]);
     }
-
-    vec3 skin_color = vec3(197, 140, 133);
-    skin_color = rgb_to_frag(skin_color);
-    vec3 lip_color = vec3(214, 91, 91);
-    lip_color = rgb_to_frag(lip_color);
-
 
     while ((step++ < march_max_steps) && (t < march_max_distance)) {
         vec3 p = o + t * d;
@@ -443,7 +457,8 @@ vec4 march(vec3 o, vec3 d) {
 
                 if (f < march_hit_tolerance) {
                     n = normalize(vec3(x_r_bound_t, y_r_bound_t, z_r_bound_t));
-                    return getColor(p, n, o, rgb_to_frag(vec3(78,53,36)) + 0.09*length(p));
+
+                    return getColor(p, n, o, eye_colors[eye] + 0.09*length(p));
                 }
 
                 float d_RightEyeBoundThree = sdRightEyeBoundThree(p);
@@ -476,7 +491,7 @@ vec4 march(vec3 o, vec3 d) {
 
                 if (f < march_hit_tolerance) {
                     n = normalize(vec3(x_l_bound_t, y_l_bound_t, z_l_bound_t));
-                    return getColor(p, n, o, rgb_to_frag(vec3(78,53,36)) + 0.09*length(p));
+                    return getColor(p, n, o, eye_colors[eye] + 0.09*length(p));
                 }
 
                 float d_LeftEyeBoundThree = sdLeftEyeBoundThree(p);

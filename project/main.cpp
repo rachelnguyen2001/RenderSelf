@@ -22,7 +22,7 @@ void platform() {
     Shader shader = shader_create(vertex_shader_source, 1, fragment_shader_source);
 
     #define MAX_NUM_LIGHTS 6
-    int num_lights = 6;
+    int num_lights = 3;
     vec3 light_positions_world[MAX_NUM_LIGHTS] = {};
     vec3 sun_color = V3(244, 233, 155);
     sun_color = getRGB(sun_color);
@@ -44,9 +44,8 @@ void platform() {
     Camera3D camera = { 5.0 };
     real iTime = 0.0;
     bool playing = false;
-    // bool light = false;
 
-    real ambientStrength = 0.1;
+    real ambientStrength = 0.2;
     real diffuseStrength = 0.6;
     real specularStrength = 0.0;
     real shininess = 12.0;
@@ -59,9 +58,10 @@ void platform() {
     real p_r = 0.0;
     int lip_color = 0;
     int skin_color = 0;
+    int eye_color = 0;
+    int lip_size = 0;
 
     while (cow_begin_frame()) {
-
         if (!playing) {
             text_draw(globals.NDC_from_Screen, "STYLISH", {950.0, 600.0, 0.0}, {1.0, 1.0, 1.0}, 100);
             text_draw(globals.NDC_from_Screen, "Want to know which makeup look suits you best?", {700.0, 800.0, 0.0}, {1.0, 1.0, 1.0}, 35);
@@ -69,14 +69,15 @@ void platform() {
         }
 
         if (playing || gui_button_custom("PLAY", 'p')) {
-            sound_play_sound("codebase/music.wav");
+            // sound_play_sound("codebase/music.wav");
             playing = true;
 
             // gui_checkbox("Lightning", &light, 'l');
             gui_slider("Number of Lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
             gui_slider("Lip Color", &lip_color, 0, 4, 'd', 'f');
             gui_slider("Skin Color", &skin_color, 0, 4, 'r', 't');
-
+            gui_slider("Eye Color", &eye_color, 0, 4, 'e', 'w');
+            gui_slider("Lip Size", &lip_size, 0, 10, 'y', 'p');
             // if (light) {
                 // gui_slider("Number of lights", &num_lights, 0, MAX_NUM_LIGHTS, 'j', 'k');
                 // gui_printf("");
@@ -111,6 +112,8 @@ void platform() {
             shader_set_uniform(&shader, "p_r", p_r);
             shader_set_uniform(&shader, "lip", lip_color);
             shader_set_uniform(&shader, "skin", skin_color);
+            shader_set_uniform(&shader, "eye", eye_color);
+            shader_set_uniform(&shader, "lip_size", lip_size);
 
             shader_pass_vertex_attribute(&shader, mesh.num_vertices, mesh.vertex_positions);
             shader_draw(&shader, mesh.num_triangles, mesh.triangle_indices);
